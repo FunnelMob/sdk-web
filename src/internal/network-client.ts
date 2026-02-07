@@ -15,7 +15,7 @@ export class NetworkClient {
     configuration: FunnelMobConfiguration
   ): Promise<void> {
     const batch: EventBatch = {
-      app_id: configuration.appId,
+      platform: 'web',
       device_id: deviceId,
       events: events.map(serializeEvent),
     };

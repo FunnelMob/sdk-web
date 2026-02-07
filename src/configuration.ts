@@ -1,7 +1,7 @@
 /**
- * Environment options
+ * Server options
  */
-export enum Environment {
+export enum Server {
   Production = 'production',
   Sandbox = 'sandbox',
 }
@@ -22,14 +22,11 @@ export enum LogLevel {
  * Configuration options for the FunnelMob SDK
  */
 export class FunnelMobConfiguration {
-  /** Application identifier */
-  readonly appId: string;
-
   /** API key for authentication */
   readonly apiKey: string;
 
-  /** Environment (production or sandbox) */
-  readonly environment: Environment;
+  /** Server (production or sandbox) */
+  readonly server: Server;
 
   /** Log level for debugging */
   readonly logLevel: LogLevel;
@@ -41,16 +38,14 @@ export class FunnelMobConfiguration {
   readonly maxBatchSize: number;
 
   constructor(options: {
-    appId: string;
     apiKey: string;
-    environment?: Environment;
+    server?: Server;
     logLevel?: LogLevel;
     flushIntervalMs?: number;
     maxBatchSize?: number;
   }) {
-    this.appId = options.appId;
     this.apiKey = options.apiKey;
-    this.environment = options.environment ?? Environment.Production;
+    this.server = options.server ?? Server.Production;
     this.logLevel = options.logLevel ?? LogLevel.None;
     this.flushIntervalMs = Math.max(1000, options.flushIntervalMs ?? 30000);
     this.maxBatchSize = Math.min(100, Math.max(1, options.maxBatchSize ?? 100));
@@ -60,10 +55,10 @@ export class FunnelMobConfiguration {
    * Get the base URL for the API
    */
   get baseUrl(): string {
-    switch (this.environment) {
-      case Environment.Production:
+    switch (this.server) {
+      case Server.Production:
         return 'https://api.funnelmob.com/v1';
-      case Environment.Sandbox:
+      case Server.Sandbox:
         return 'https://sandbox.funnelmob.com/v1';
     }
   }

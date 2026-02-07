@@ -47,7 +47,7 @@ export class FunnelMob {
 
     this.configuration = configuration;
     Logger.logLevel = configuration.logLevel;
-    Logger.info(`FunnelMob initialized for app: ${configuration.appId}`);
+    Logger.info('FunnelMob initialized');
 
     this.startFlushTimer();
     this.startSession();

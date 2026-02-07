@@ -1,16 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { FunnelMobConfiguration, Environment, LogLevel } from '../configuration';
+import { FunnelMobConfiguration, Server, LogLevel } from '../configuration';
 
 describe('FunnelMobConfiguration', () => {
   it('has correct defaults', () => {
     const config = new FunnelMobConfiguration({
-      appId: 'com.test.app',
       apiKey: 'fm_test_key',
     });
 
-    expect(config.appId).toBe('com.test.app');
     expect(config.apiKey).toBe('fm_test_key');
-    expect(config.environment).toBe(Environment.Production);
+    expect(config.server).toBe(Server.Production);
     expect(config.logLevel).toBe(LogLevel.None);
     expect(config.flushIntervalMs).toBe(30000);
     expect(config.maxBatchSize).toBe(100);
@@ -18,15 +16,14 @@ describe('FunnelMobConfiguration', () => {
 
   it('accepts all options', () => {
     const config = new FunnelMobConfiguration({
-      appId: 'com.test.app',
       apiKey: 'fm_test_key',
-      environment: Environment.Sandbox,
+      server: Server.Sandbox,
       logLevel: LogLevel.Debug,
       flushIntervalMs: 10000,
       maxBatchSize: 50,
     });
 
-    expect(config.environment).toBe(Environment.Sandbox);
+    expect(config.server).toBe(Server.Sandbox);
     expect(config.logLevel).toBe(LogLevel.Debug);
     expect(config.flushIntervalMs).toBe(10000);
     expect(config.maxBatchSize).toBe(50);
@@ -34,7 +31,6 @@ describe('FunnelMobConfiguration', () => {
 
   it('enforces minimum flush interval', () => {
     const config = new FunnelMobConfiguration({
-      appId: 'com.test.app',
       apiKey: 'fm_test_key',
       flushIntervalMs: 500,
     });
@@ -44,13 +40,11 @@ describe('FunnelMobConfiguration', () => {
 
   it('clamps max batch size', () => {
     const configLow = new FunnelMobConfiguration({
-      appId: 'com.test.app',
       apiKey: 'fm_test_key',
       maxBatchSize: 0,
     });
 
     const configHigh = new FunnelMobConfiguration({
-      appId: 'com.test.app',
       apiKey: 'fm_test_key',
       maxBatchSize: 200,
     });
@@ -61,9 +55,8 @@ describe('FunnelMobConfiguration', () => {
 
   it('returns correct production base URL', () => {
     const config = new FunnelMobConfiguration({
-      appId: 'com.test.app',
       apiKey: 'fm_test_key',
-      environment: Environment.Production,
+      server: Server.Production,
     });
 
     expect(config.baseUrl).toBe('https://api.funnelmob.com/v1');
@@ -71,9 +64,8 @@ describe('FunnelMobConfiguration', () => {
 
   it('returns correct sandbox base URL', () => {
     const config = new FunnelMobConfiguration({
-      appId: 'com.test.app',
       apiKey: 'fm_test_key',
-      environment: Environment.Sandbox,
+      server: Server.Sandbox,
     });
 
     expect(config.baseUrl).toBe('https://sandbox.funnelmob.com/v1');

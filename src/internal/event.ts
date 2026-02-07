@@ -21,7 +21,7 @@ export interface EventRevenue {
  * Event batch for API requests
  */
 export interface EventBatch {
-  app_id: string;
+  platform: string;
   device_id: string;
   session_id?: string;
   events: SerializedEvent[];
