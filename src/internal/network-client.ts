@@ -1,6 +1,5 @@
 import { FunnelMobConfiguration } from '../configuration';
 import { Event, EventBatch, serializeEvent } from './event';
-import { Logger } from './logger';
 
 /**
  * HTTP client for sending events to the FunnelMob API
