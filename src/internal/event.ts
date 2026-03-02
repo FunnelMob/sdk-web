@@ -56,12 +56,9 @@ export interface AttributionResult {
 }
 
 /**
- * Session request payload
+ * Device context for session requests
  */
-export interface SessionRequest {
-  device_id: string;
-  platform: string;
-  is_first_session: boolean;
+export interface DeviceContext {
   user_agent?: string;
   language?: string;
   timezone?: string;
@@ -70,10 +67,24 @@ export interface SessionRequest {
 }
 
 /**
+ * Session request payload
+ */
+export interface SessionRequest {
+  device_id: string;
+  session_id: string;
+  platform: string;
+  timestamp: string;
+  is_first_session: boolean;
+  referrer_token?: string;
+  context?: DeviceContext;
+}
+
+/**
  * Session response from the server
  */
 export interface SessionResponse {
   session_id: string;
+  server_timestamp: string;
   attribution?: AttributionResult;
 }
 

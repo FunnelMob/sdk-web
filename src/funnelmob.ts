@@ -187,13 +187,17 @@ export class FunnelMob {
       const response = await this.networkClient.sendSession(
         {
           device_id: this.deviceInfo.deviceId,
+          session_id: this.generateUUID(),
           platform: 'web',
+          timestamp: new Date().toISOString(),
           is_first_session: true,
-          user_agent: context.userAgent,
-          language: context.language,
-          timezone: context.timezone,
-          screen_width: context.screenWidth,
-          screen_height: context.screenHeight,
+          context: {
+            user_agent: context.userAgent,
+            language: context.language,
+            timezone: context.timezone,
+            screen_width: context.screenWidth,
+            screen_height: context.screenHeight,
+          },
         },
         config
       );
