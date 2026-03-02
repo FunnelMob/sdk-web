@@ -5,7 +5,14 @@ import { EventQueue } from './internal/event-queue';
 import { NetworkClient } from './internal/network-client';
 import { DeviceInfo } from './internal/device-info';
 import { Logger } from './internal/logger';
-import type { Event } from './internal/event';
+import type { Event, AttributionResult } from './internal/event';
+
+const ATTRIBUTION_STORAGE_KEY = 'fm_attribution';
+
+/**
+ * Callback type for attribution results
+ */
+export type AttributionCallback = (result: AttributionResult | null) => void;
 
 /**
  * Main entry point for the FunnelMob SDK
@@ -19,6 +26,8 @@ export class FunnelMob {
   private networkClient: NetworkClient;
   private deviceInfo: DeviceInfo;
   private _flushTimer: ReturnType<typeof setInterval> | null = null;
+  private attributionId: string | null = null;
+  private attributionCallbacks: AttributionCallback[] = [];
 
   private constructor() {
     this.eventQueue = new EventQueue();
@@ -51,6 +60,20 @@ export class FunnelMob {
 
     this.startFlushTimer();
     this.startSession();
+  }
+
+  /**
+   * Register a callback for attribution results.
+   * If attribution has already completed, the callback fires immediately.
+   */
+  onAttribution(callback: AttributionCallback): void {
+    this.attributionCallbacks.push(callback);
+
+    // If we already have a stored result, fire immediately
+    const stored = this.loadAttribution();
+    if (stored !== null) {
+      callback(stored);
+    }
   }
 
   /**
@@ -103,6 +126,7 @@ export class FunnelMob {
       timestamp: new Date().toISOString(),
       revenue: revenue?.toEventRevenue(),
       parameters: params?.toObject(),
+      attributionId: this.attributionId ?? undefined,
     };
 
     this.eventQueue.enqueue(event);
@@ -141,8 +165,80 @@ export class FunnelMob {
   // MARK: - Private
 
   private startSession(): void {
-    // TODO: Implement session tracking
-    Logger.debug('Session started');
+    // Check for existing attribution
+    const stored = this.loadAttribution();
+    if (stored) {
+      this.attributionId = stored.attribution_id;
+      Logger.debug('Loaded existing attribution');
+      this.notifyCallbacks(stored);
+      return;
+    }
+
+    // First session — request attribution from server
+    this.requestAttribution();
+  }
+
+  private async requestAttribution(): Promise<void> {
+    const config = this.configuration;
+    if (!config) return;
+
+    try {
+      const context = this.deviceInfo.toContext();
+      const response = await this.networkClient.sendSession(
+        {
+          device_id: this.deviceInfo.deviceId,
+          platform: 'web',
+          is_first_session: true,
+          user_agent: context.userAgent,
+          language: context.language,
+          timezone: context.timezone,
+          screen_width: context.screenWidth,
+          screen_height: context.screenHeight,
+        },
+        config
+      );
+
+      if (response.attribution) {
+        this.attributionId = response.attribution.attribution_id;
+        this.saveAttribution(response.attribution);
+        Logger.info('Attribution received');
+      }
+
+      this.notifyCallbacks(response.attribution ?? null);
+    } catch (error) {
+      Logger.error(`Attribution request failed: ${error}`);
+      this.notifyCallbacks(null);
+    }
+  }
+
+  private notifyCallbacks(result: AttributionResult | null): void {
+    for (const callback of this.attributionCallbacks) {
+      try {
+        callback(result);
+      } catch (error) {
+        Logger.error(`Attribution callback error: ${error}`);
+      }
+    }
+  }
+
+  private loadAttribution(): AttributionResult | null {
+    try {
+      if (typeof localStorage === 'undefined') return null;
+      const stored = localStorage.getItem(ATTRIBUTION_STORAGE_KEY);
+      if (!stored) return null;
+      return JSON.parse(stored) as AttributionResult;
+    } catch {
+      return null;
+    }
+  }
+
+  private saveAttribution(result: AttributionResult): void {
+    try {
+      if (typeof localStorage === 'undefined') return;
+      localStorage.setItem(ATTRIBUTION_STORAGE_KEY, JSON.stringify(result));
+    } catch (error) {
+      Logger.warning(`Failed to save attribution: ${error}`);
+    }
   }
 
   private startFlushTimer(): void {

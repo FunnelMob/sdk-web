@@ -7,6 +7,7 @@ export interface Event {
   timestamp: string;
   revenue?: EventRevenue;
   parameters?: Record<string, string | number | boolean>;
+  attributionId?: string;
 }
 
 /**
@@ -36,6 +37,44 @@ export interface SerializedEvent {
   timestamp: string;
   revenue?: EventRevenue;
   parameters?: Record<string, string | number | boolean>;
+  attribution_id?: string;
+}
+
+/**
+ * Attribution result from the server
+ */
+export interface AttributionResult {
+  attribution_id: string;
+  attributed: boolean;
+  method: string;
+  campaign_id?: string;
+  ad_network?: string;
+  ad_group_id?: string;
+  ad_id?: string;
+  keyword?: string;
+  confidence: number;
+}
+
+/**
+ * Session request payload
+ */
+export interface SessionRequest {
+  device_id: string;
+  platform: string;
+  is_first_session: boolean;
+  user_agent?: string;
+  language?: string;
+  timezone?: string;
+  screen_width?: number;
+  screen_height?: number;
+}
+
+/**
+ * Session response from the server
+ */
+export interface SessionResponse {
+  session_id: string;
+  attribution?: AttributionResult;
 }
 
 /**
@@ -54,6 +93,10 @@ export function serializeEvent(event: Event): SerializedEvent {
 
   if (event.parameters && Object.keys(event.parameters).length > 0) {
     serialized.parameters = event.parameters;
+  }
+
+  if (event.attributionId) {
+    serialized.attribution_id = event.attributionId;
   }
 
   return serialized;

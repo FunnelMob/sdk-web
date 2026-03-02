@@ -1,10 +1,36 @@
 import { FunnelMobConfiguration } from '../configuration';
-import { Event, EventBatch, serializeEvent } from './event';
+import { Event, EventBatch, SessionRequest, SessionResponse, serializeEvent } from './event';
 
 /**
  * HTTP client for sending events to the FunnelMob API
  */
 export class NetworkClient {
+  /**
+   * Send a session request and receive attribution result
+   */
+  async sendSession(
+    request: SessionRequest,
+    configuration: FunnelMobConfiguration
+  ): Promise<SessionResponse> {
+    const url = `${configuration.baseUrl}/session`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-FM-API-Key': configuration.apiKey,
+      },
+      body: JSON.stringify(request),
+    });
+
+    if (!response.ok) {
+      const error = await this.parseError(response);
+      throw error;
+    }
+
+    return response.json();
+  }
+
   /**
    * Send events to the API
    */
