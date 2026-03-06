@@ -9,11 +9,19 @@ import type { Event, AttributionResult, IdentifyRequest } from './internal/event
 
 const ATTRIBUTION_STORAGE_KEY = 'fm_attribution';
 const USER_ID_STORAGE_KEY = 'fm_user_id';
+const REMOTE_CONFIG_STORAGE_KEY = 'fm_remote_config';
+const REMOTE_CONFIG_TS_KEY = 'fm_remote_config_ts';
+const CONFIG_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 /**
  * Callback type for attribution results
  */
 export type AttributionCallback = (result: AttributionResult | null) => void;
+
+/**
+ * Callback type for remote config loaded events
+ */
+export type ConfigLoadedCallback = (config: Record<string, unknown>) => void;
 
 /**
  * Main entry point for the FunnelMob SDK
@@ -31,6 +39,8 @@ export class FunnelMob {
   private attributionCallbacks: AttributionCallback[] = [];
   private userId: string | null = null;
   private userProperties: Record<string, string | number | boolean> | null = null;
+  private remoteConfig: Record<string, unknown> | null = null;
+  private configCallbacks: ConfigLoadedCallback[] = [];
 
   private constructor() {
     this.eventQueue = new EventQueue();
@@ -66,6 +76,8 @@ export class FunnelMob {
 
     this.startFlushTimer();
     this.startSession();
+    this.loadCachedConfig();
+    this.fetchRemoteConfig();
   }
 
   /**
@@ -79,6 +91,38 @@ export class FunnelMob {
     const stored = this.loadAttribution();
     if (stored !== null) {
       callback(stored);
+    }
+  }
+
+  // MARK: - Remote Config
+
+  /**
+   * Get a single remote config value.
+   * Returns the value if found, or the defaultValue if not.
+   */
+  getConfig<T = unknown>(key: string, defaultValue?: T): T {
+    if (!this.remoteConfig || !(key in this.remoteConfig)) {
+      return defaultValue as T;
+    }
+    return this.remoteConfig[key] as T;
+  }
+
+  /**
+   * Get all remote config values as a copy.
+   */
+  getAllConfig(): Record<string, unknown> {
+    return { ...this.remoteConfig };
+  }
+
+  /**
+   * Register a callback that fires when remote config is loaded.
+   * If config has already been loaded, the callback fires immediately.
+   */
+  onConfigLoaded(callback: ConfigLoadedCallback): void {
+    this.configCallbacks.push(callback);
+
+    if (this.remoteConfig !== null) {
+      callback({ ...this.remoteConfig });
     }
   }
 
@@ -215,6 +259,8 @@ export class FunnelMob {
     }
     this.flush();
     this.configuration = null;
+    this.remoteConfig = null;
+    this.configCallbacks = [];
     Logger.info('FunnelMob destroyed');
   }
 
@@ -366,6 +412,58 @@ export class FunnelMob {
       }
     } catch {
       // ignore
+    }
+  }
+
+  private async fetchRemoteConfig(): Promise<void> {
+    const config = this.configuration;
+    if (!config) return;
+
+    try {
+      const result = await this.networkClient.fetchConfig(config);
+      this.remoteConfig = result;
+      this.saveCachedConfig(result);
+      Logger.debug('Remote config loaded');
+      this.notifyConfigCallbacks(result);
+    } catch (error) {
+      Logger.error(`Failed to fetch remote config: ${error}`);
+      // Keep any cached config as fallback
+    }
+  }
+
+  private loadCachedConfig(): void {
+    try {
+      if (typeof localStorage === 'undefined') return;
+      const tsStr = localStorage.getItem(REMOTE_CONFIG_TS_KEY);
+      if (!tsStr) return;
+      const ts = parseInt(tsStr, 10);
+      if (Date.now() - ts > CONFIG_CACHE_TTL_MS) return;
+      const stored = localStorage.getItem(REMOTE_CONFIG_STORAGE_KEY);
+      if (!stored) return;
+      this.remoteConfig = JSON.parse(stored) as Record<string, unknown>;
+      Logger.debug('Loaded cached remote config');
+    } catch {
+      // ignore
+    }
+  }
+
+  private saveCachedConfig(config: Record<string, unknown>): void {
+    try {
+      if (typeof localStorage === 'undefined') return;
+      localStorage.setItem(REMOTE_CONFIG_STORAGE_KEY, JSON.stringify(config));
+      localStorage.setItem(REMOTE_CONFIG_TS_KEY, Date.now().toString());
+    } catch {
+      // ignore
+    }
+  }
+
+  private notifyConfigCallbacks(config: Record<string, unknown>): void {
+    for (const callback of this.configCallbacks) {
+      try {
+        callback({ ...config });
+      } catch (error) {
+        Logger.error(`Config callback error: ${error}`);
+      }
     }
   }
 

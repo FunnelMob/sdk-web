@@ -101,6 +101,29 @@ export class NetworkClient {
     }
   }
 
+  /**
+   * Fetch remote config from the API
+   */
+  async fetchConfig(
+    configuration: FunnelMobConfiguration
+  ): Promise<Record<string, unknown>> {
+    const url = `${configuration.baseUrl}/config`;
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'X-FM-API-Key': configuration.apiKey,
+      },
+    });
+
+    if (!response.ok) {
+      const error = await this.parseError(response);
+      throw error;
+    }
+
+    return response.json();
+  }
+
   private async parseError(response: Response): Promise<NetworkError> {
     switch (response.status) {
       case 401:
