@@ -25,6 +25,7 @@ export interface EventBatch {
   platform: string;
   device_id: string;
   session_id?: string;
+  user_id?: string;
   events: SerializedEvent[];
 }
 
@@ -86,6 +87,25 @@ export interface SessionResponse {
   session_id: string;
   server_timestamp: string;
   attribution?: AttributionResult;
+}
+
+/**
+ * Identify request payload
+ */
+export interface IdentifyRequest {
+  device_id: string;
+  user_id: string;
+  platform: string;
+  timestamp: string;
+  user_properties?: Record<string, string | number | boolean>;
+  context?: DeviceContext;
+}
+
+/**
+ * Identify response from the server
+ */
+export interface IdentifyResponse {
+  status: string;
 }
 
 /**

@@ -1,5 +1,13 @@
 import { FunnelMobConfiguration } from '../configuration';
-import { Event, EventBatch, SessionRequest, SessionResponse, serializeEvent } from './event';
+import {
+  Event,
+  EventBatch,
+  IdentifyRequest,
+  IdentifyResponse,
+  SessionRequest,
+  SessionResponse,
+  serializeEvent,
+} from './event';
 
 /**
  * HTTP client for sending events to the FunnelMob API
@@ -32,18 +40,49 @@ export class NetworkClient {
   }
 
   /**
+   * Send an identify request to the API
+   */
+  async sendIdentify(
+    request: IdentifyRequest,
+    configuration: FunnelMobConfiguration
+  ): Promise<IdentifyResponse> {
+    const url = `${configuration.baseUrl}/identify`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-FM-API-Key': configuration.apiKey,
+      },
+      body: JSON.stringify(request),
+    });
+
+    if (!response.ok) {
+      const error = await this.parseError(response);
+      throw error;
+    }
+
+    return response.json();
+  }
+
+  /**
    * Send events to the API
    */
   async sendEvents(
     events: Event[],
     deviceId: string,
-    configuration: FunnelMobConfiguration
+    configuration: FunnelMobConfiguration,
+    userId?: string | null
   ): Promise<void> {
     const batch: EventBatch = {
       platform: 'web',
       device_id: deviceId,
       events: events.map(serializeEvent),
     };
+
+    if (userId) {
+      batch.user_id = userId;
+    }
 
     const url = `${configuration.baseUrl}/events`;
 

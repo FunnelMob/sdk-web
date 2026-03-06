@@ -5,9 +5,10 @@ import { EventQueue } from './internal/event-queue';
 import { NetworkClient } from './internal/network-client';
 import { DeviceInfo } from './internal/device-info';
 import { Logger } from './internal/logger';
-import type { Event, AttributionResult } from './internal/event';
+import type { Event, AttributionResult, IdentifyRequest } from './internal/event';
 
 const ATTRIBUTION_STORAGE_KEY = 'fm_attribution';
+const USER_ID_STORAGE_KEY = 'fm_user_id';
 
 /**
  * Callback type for attribution results
@@ -28,6 +29,8 @@ export class FunnelMob {
   private _flushTimer: ReturnType<typeof setInterval> | null = null;
   private attributionId: string | null = null;
   private attributionCallbacks: AttributionCallback[] = [];
+  private userId: string | null = null;
+  private userProperties: Record<string, string | number | boolean> | null = null;
 
   private constructor() {
     this.eventQueue = new EventQueue();
@@ -57,6 +60,9 @@ export class FunnelMob {
     this.configuration = configuration;
     Logger.logLevel = configuration.logLevel;
     Logger.info('FunnelMob initialized');
+
+    // Restore persisted userId
+    this.restoreUserId();
 
     this.startFlushTimer();
     this.startSession();
@@ -138,7 +144,7 @@ export class FunnelMob {
    */
   flush(): void {
     if (!this.configuration) return;
-    this.eventQueue.flush(this.networkClient, this.configuration, this.deviceInfo.deviceId);
+    this.eventQueue.flush(this.networkClient, this.configuration, this.deviceInfo.deviceId, this.userId);
   }
 
   /**
@@ -147,6 +153,56 @@ export class FunnelMob {
   setEnabled(enabled: boolean): void {
     this.isEnabled = enabled;
     Logger.info(`Tracking ${enabled ? 'enabled' : 'disabled'}`);
+  }
+
+  /**
+   * Set the user ID for identified users.
+   * This sends an identify request to the server and attaches
+   * the user ID to all subsequent events.
+   */
+  setUserId(userId: string): void {
+    if (!userId || userId.length === 0) {
+      Logger.error('setUserId: userId cannot be empty');
+      return;
+    }
+
+    this.userId = userId;
+    this.persistUserId(userId);
+    Logger.info(`User ID set: ${userId}`);
+    this.sendIdentify();
+  }
+
+  /**
+   * Set user properties for the current identified user.
+   * Properties are merged with existing properties.
+   * Requires setUserId() to be called first.
+   */
+  setUserProperties(properties: Record<string, string | number | boolean>): void {
+    if (!this.userId) {
+      Logger.error('setUserProperties: call setUserId() first');
+      return;
+    }
+
+    this.userProperties = { ...this.userProperties, ...properties };
+    Logger.debug('User properties updated');
+    this.sendIdentify();
+  }
+
+  /**
+   * Clear the current user ID (e.g., on logout).
+   * Subsequent events will not include a user_id.
+   */
+  clearUserId(): void {
+    this.userId = null;
+    this.userProperties = null;
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem(USER_ID_STORAGE_KEY);
+      }
+    } catch {
+      // ignore
+    }
+    Logger.info('User ID cleared');
   }
 
   /**
@@ -261,6 +317,56 @@ export class FunnelMob {
     if (!pattern.test(name)) return null;
 
     return name;
+  }
+
+  private async sendIdentify(): Promise<void> {
+    const config = this.configuration;
+    if (!config || !this.userId) return;
+
+    try {
+      const context = this.deviceInfo.toContext();
+      const request: IdentifyRequest = {
+        device_id: this.deviceInfo.deviceId,
+        user_id: this.userId,
+        platform: 'web',
+        timestamp: new Date().toISOString(),
+        user_properties: this.userProperties ?? undefined,
+        context: {
+          user_agent: context.userAgent,
+          language: context.language,
+          timezone: context.timezone,
+          screen_width: context.screenWidth,
+          screen_height: context.screenHeight,
+        },
+      };
+
+      await this.networkClient.sendIdentify(request, config);
+      Logger.debug('Identify request sent');
+    } catch (error) {
+      Logger.error(`Identify request failed: ${error}`);
+    }
+  }
+
+  private persistUserId(userId: string): void {
+    try {
+      if (typeof localStorage === 'undefined') return;
+      localStorage.setItem(USER_ID_STORAGE_KEY, userId);
+    } catch {
+      // ignore
+    }
+  }
+
+  private restoreUserId(): void {
+    try {
+      if (typeof localStorage === 'undefined') return;
+      const stored = localStorage.getItem(USER_ID_STORAGE_KEY);
+      if (stored) {
+        this.userId = stored;
+        Logger.debug(`Restored user ID: ${stored}`);
+      }
+    } catch {
+      // ignore
+    }
   }
 
   private generateUUID(): string {

@@ -46,7 +46,8 @@ export class EventQueue {
   async flush(
     client: NetworkClient,
     configuration: FunnelMobConfiguration,
-    deviceId: string
+    deviceId: string,
+    userId?: string | null
   ): Promise<void> {
     const batch = this.dequeue(configuration.maxBatchSize);
     if (batch.length === 0) return;
@@ -54,7 +55,7 @@ export class EventQueue {
     Logger.debug(`Flushing ${batch.length} events`);
 
     try {
-      await client.sendEvents(batch, deviceId, configuration);
+      await client.sendEvents(batch, deviceId, configuration, userId);
       Logger.debug(`Successfully sent ${batch.length} events`);
     } catch (error) {
       // Re-queue events on failure
