@@ -183,6 +183,167 @@ export class FunnelMob {
     Logger.debug(`Event queued: ${name}`);
   }
 
+  // MARK: - Standard Event Methods
+
+  /** Meta only — fires on every page load */
+  trackPageView(parameters?: FunnelMobEventParameters): void {
+    this.trackStandard('PageView', parameters);
+  }
+
+  /** Meta + TikTok — visit to a product detail, landing, or content page */
+  trackViewContent(parameters?: FunnelMobEventParameters): void {
+    this.trackStandard('ViewContent', parameters);
+  }
+
+  /** Meta + TikTok — search performed on your site or app */
+  trackSearch(parameters?: FunnelMobEventParameters): void {
+    this.trackStandard('Search', parameters);
+  }
+
+  /** Meta + TikTok — item added to shopping cart */
+  trackAddToCart(parameters?: FunnelMobEventParameters): void {
+    this.trackStandard('AddToCart', parameters);
+  }
+
+  /** Meta + TikTok — item added to wishlist */
+  trackAddToWishlist(parameters?: FunnelMobEventParameters): void {
+    this.trackStandard('AddToWishlist', parameters);
+  }
+
+  /** Meta + TikTok — start of checkout process */
+  trackInitiateCheckout(parameters?: FunnelMobEventParameters): void {
+    this.trackStandard('InitiateCheckout', parameters);
+  }
+
+  /** Meta + TikTok — payment info entered during checkout */
+  trackAddPaymentInfo(parameters?: FunnelMobEventParameters): void {
+    this.trackStandard('AddPaymentInfo', parameters);
+  }
+
+  /** Meta + TikTok — purchase completed; value and currency are required */
+  trackPurchase(value: number, currency: string, parameters?: FunnelMobEventParameters): void {
+    this.trackStandard('Purchase', new FunnelMobRevenue(value, currency), parameters);
+  }
+
+  /** Meta + TikTok — user submits contact information */
+  trackLead(parameters?: FunnelMobEventParameters): void {
+    this.trackStandard('Lead', parameters);
+  }
+
+  /** Meta + TikTok — user completes a registration or sign-up flow */
+  trackCompleteRegistration(parameters?: FunnelMobEventParameters): void {
+    this.trackStandard('CompleteRegistration', parameters);
+  }
+
+  /** Meta + TikTok — any contact initiated between user and business */
+  trackContact(parameters?: FunnelMobEventParameters): void {
+    this.trackStandard('Contact', parameters);
+  }
+
+  /** Meta + TikTok — user books an appointment or reservation */
+  trackSchedule(parameters?: FunnelMobEventParameters): void {
+    this.trackStandard('Schedule', parameters);
+  }
+
+  /** Meta + TikTok — user searches for a physical business location */
+  trackFindLocation(parameters?: FunnelMobEventParameters): void {
+    this.trackStandard('FindLocation', parameters);
+  }
+
+  /** Meta + TikTok — user customizes a product */
+  trackCustomizeProduct(parameters?: FunnelMobEventParameters): void {
+    this.trackStandard('CustomizeProduct', parameters);
+  }
+
+  /** Meta only — donation completed; value and currency are required */
+  trackDonate(value: number, currency: string, parameters?: FunnelMobEventParameters): void {
+    this.trackStandard('Donate', new FunnelMobRevenue(value, currency), parameters);
+  }
+
+  /** Meta + TikTok — user submits an application */
+  trackSubmitApplication(parameters?: FunnelMobEventParameters): void {
+    this.trackStandard('SubmitApplication', parameters);
+  }
+
+  /** TikTok only — application previously submitted is approved */
+  trackApplicationApproval(parameters?: FunnelMobEventParameters): void {
+    this.trackStandard('ApplicationApproval', parameters);
+  }
+
+  /** TikTok only — user downloads a file or asset */
+  trackDownload(parameters?: FunnelMobEventParameters): void {
+    this.trackStandard('Download', parameters);
+  }
+
+  /** TikTok legacy — use trackLead() for new implementations */
+  trackSubmitForm(parameters?: FunnelMobEventParameters): void {
+    this.trackStandard('SubmitForm', parameters);
+  }
+
+  /** Meta + TikTok — user begins a free trial; value and currency are required */
+  trackStartTrial(value: number, currency: string, parameters?: FunnelMobEventParameters): void {
+    this.trackStandard('StartTrial', new FunnelMobRevenue(value, currency), parameters);
+  }
+
+  /** Meta + TikTok — user starts a paid subscription; value and currency are required */
+  trackSubscribe(value: number, currency: string, parameters?: FunnelMobEventParameters): void {
+    this.trackStandard('Subscribe', new FunnelMobRevenue(value, currency), parameters);
+  }
+
+  /** Meta only — user reaches a level in your app or game */
+  trackAchieveLevel(parameters?: FunnelMobEventParameters): void {
+    this.trackStandard('AchieveLevel', parameters);
+  }
+
+  /** Meta only — user completes a rewarded action or milestone */
+  trackUnlockAchievement(parameters?: FunnelMobEventParameters): void {
+    this.trackStandard('UnlockAchievement', parameters);
+  }
+
+  /**
+   * Meta only — user spends in-app credits or virtual currency; value is required.
+   * Note: value is passed as a parameter (not revenue) because SpentCredits uses
+   * virtual currency, which has no ISO 4217 currency code.
+   */
+  trackSpentCredits(value: number, parameters?: FunnelMobEventParameters): void {
+    const params = new FunnelMobEventParameters();
+    params.set('value', value);
+    if (parameters) {
+      const obj = parameters.toObject();
+      if (obj) {
+        for (const [k, v] of Object.entries(obj)) {
+          params.set(k, v);
+        }
+      }
+    }
+    this.trackStandard('SpentCredits', params);
+  }
+
+  /** Meta only — user submits a rating */
+  trackRate(parameters?: FunnelMobEventParameters): void {
+    this.trackStandard('Rate', parameters);
+  }
+
+  /** Meta only — user completes an in-app tutorial */
+  trackCompleteTutorial(parameters?: FunnelMobEventParameters): void {
+    this.trackStandard('CompleteTutorial', parameters);
+  }
+
+  /** Meta only — app launch or open */
+  trackActivateApp(parameters?: FunnelMobEventParameters): void {
+    this.trackStandard('ActivateApp', parameters);
+  }
+
+  /** Meta only — in-app ad clicked by user */
+  trackInAppAdClick(parameters?: FunnelMobEventParameters): void {
+    this.trackStandard('InAppAdClick', parameters);
+  }
+
+  /** Meta only — in-app ad appeared on-screen */
+  trackInAppAdImpression(parameters?: FunnelMobEventParameters): void {
+    this.trackStandard('InAppAdImpression', parameters);
+  }
+
   /**
    * Force send queued events immediately
    */
@@ -265,6 +426,28 @@ export class FunnelMob {
   }
 
   // MARK: - Private
+
+  private trackStandard(name: string, params?: FunnelMobEventParameters): void;
+  private trackStandard(
+    name: string,
+    revenue: FunnelMobRevenue,
+    params?: FunnelMobEventParameters
+  ): void;
+  private trackStandard(
+    name: string,
+    revenueOrParams?: FunnelMobRevenue | FunnelMobEventParameters,
+    params?: FunnelMobEventParameters
+  ): void {
+    if (revenueOrParams instanceof FunnelMobRevenue) {
+      params
+        ? this.trackEvent(name, revenueOrParams, params)
+        : this.trackEvent(name, revenueOrParams);
+    } else if (revenueOrParams) {
+      this.trackEvent(name, revenueOrParams);
+    } else {
+      this.trackEvent(name);
+    }
+  }
 
   private startSession(): void {
     // Check for existing attribution
