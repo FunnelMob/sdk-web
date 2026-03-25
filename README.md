@@ -117,7 +117,30 @@ FunnelMob.shared.trackEvent('subscribe', revenue, params);
 
 ## Standard Events
 
-Use predefined event names for consistent analytics:
+### Using Typed Methods (Recommended)
+
+29 typed methods provide self-documenting event tracking with compile-time safety:
+
+```typescript
+// Simple events
+FunnelMob.shared.trackPageView();
+FunnelMob.shared.trackAddToCart({ item_id: 'SKU-123', content_type: 'product' });
+
+// Revenue events (value + currency required)
+FunnelMob.shared.trackPurchase(29.99, 'USD', { order_id: 'ORD-456' });
+FunnelMob.shared.trackSubscribe(9.99, 'USD');
+FunnelMob.shared.trackStartTrial(0, 'USD');
+FunnelMob.shared.trackDonate(10, 'USD');
+
+// Spend credits (value only)
+FunnelMob.shared.trackSpentCredits(100);
+```
+
+See [docs/specs/sdk_events_reference.md](../docs/specs/sdk_events_reference.md) for the full list of 29 typed methods with platform support details.
+
+### Using Constants
+
+For custom event handling or when using the generic `trackEvent` API:
 
 ```typescript
 import { StandardEvents } from '@funnelmob/sdk';
@@ -131,17 +154,6 @@ FunnelMob.shared.trackEvent(StandardEvents.LEVEL_COMPLETE);
 FunnelMob.shared.trackEvent(StandardEvents.ADD_TO_CART);
 FunnelMob.shared.trackEvent(StandardEvents.CHECKOUT);
 ```
-
-| Event | Constant | Value |
-|-------|----------|-------|
-| Registration | `StandardEvents.REGISTRATION` | `fm_registration` |
-| Login | `StandardEvents.LOGIN` | `fm_login` |
-| Purchase | `StandardEvents.PURCHASE` | `fm_purchase` |
-| Subscribe | `StandardEvents.SUBSCRIBE` | `fm_subscribe` |
-| Tutorial Complete | `StandardEvents.TUTORIAL_COMPLETE` | `fm_tutorial_complete` |
-| Level Complete | `StandardEvents.LEVEL_COMPLETE` | `fm_level_complete` |
-| Add to Cart | `StandardEvents.ADD_TO_CART` | `fm_add_to_cart` |
-| Checkout | `StandardEvents.CHECKOUT` | `fm_checkout` |
 
 ## SDK Control
 
