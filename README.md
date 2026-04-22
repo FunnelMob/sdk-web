@@ -41,24 +41,28 @@ window.addEventListener('beforeunload', () => {
 ## Configuration
 
 ```typescript
-import { FunnelMobConfiguration, Environment, LogLevel } from '@funnelmob/sdk';
+import { FunnelMobConfiguration, LogLevel } from '@funnelmob/sdk';
 
 const config = new FunnelMobConfiguration({
   appId: 'com.example.myapp',       // Required: Your app identifier
   apiKey: 'fm_live_abc123',         // Required: Your API key
-  environment: Environment.Production, // Optional: Production (default) or Sandbox
   logLevel: LogLevel.None,          // Optional: None, Error, Warning, Info, Debug, Verbose
   flushIntervalMs: 30000,           // Optional: Auto-flush interval in ms (min: 1000, default: 30000)
   maxBatchSize: 100,                // Optional: Events per batch (1-100, default: 100)
 });
 ```
 
-### Environment Options
+### Overriding the base URL (local development)
 
-| Environment | Base URL |
-|-------------|----------|
-| `Environment.Production` | `https://api.funnelmob.com/v1` |
-| `Environment.Sandbox` | `https://sandbox.funnelmob.com/v1` |
+By default the SDK POSTs to `https://api.funnelmob.com/v1`. For local development against a dev backend, pass an explicit `baseUrl`:
+
+```typescript
+const config = new FunnelMobConfiguration({
+  appId: 'com.example.myapp',
+  apiKey: 'fm_live_abc123',
+  baseUrl: 'http://localhost:3080/v1',
+});
+```
 
 ## Event Tracking
 
@@ -189,7 +193,7 @@ function trackCustomEvent(name: string | StandardEventName) {
 
 ```typescript
 import { useEffect } from 'react';
-import { FunnelMob, FunnelMobConfiguration, Environment } from '@funnelmob/sdk';
+import { FunnelMob, FunnelMobConfiguration } from '@funnelmob/sdk';
 
 function App() {
   useEffect(() => {

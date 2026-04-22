@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { FunnelMobConfiguration, Server, LogLevel } from '../configuration';
+import { FunnelMobConfiguration, LogLevel } from '../configuration';
 
 describe('FunnelMobConfiguration', () => {
   it('has correct defaults', () => {
@@ -8,7 +8,7 @@ describe('FunnelMobConfiguration', () => {
     });
 
     expect(config.apiKey).toBe('fm_test_key');
-    expect(config.server).toBe(Server.Production);
+    expect(config.baseUrl).toBe('https://api.funnelmob.com/v1');
     expect(config.logLevel).toBe(LogLevel.None);
     expect(config.flushIntervalMs).toBe(30000);
     expect(config.maxBatchSize).toBe(100);
@@ -17,13 +17,11 @@ describe('FunnelMobConfiguration', () => {
   it('accepts all options', () => {
     const config = new FunnelMobConfiguration({
       apiKey: 'fm_test_key',
-      server: Server.Sandbox,
       logLevel: LogLevel.Debug,
       flushIntervalMs: 10000,
       maxBatchSize: 50,
     });
 
-    expect(config.server).toBe(Server.Sandbox);
     expect(config.logLevel).toBe(LogLevel.Debug);
     expect(config.flushIntervalMs).toBe(10000);
     expect(config.maxBatchSize).toBe(50);
@@ -53,21 +51,12 @@ describe('FunnelMobConfiguration', () => {
     expect(configHigh.maxBatchSize).toBe(100);
   });
 
-  it('returns correct production base URL', () => {
+  it('uses the explicit baseUrl override when provided', () => {
     const config = new FunnelMobConfiguration({
       apiKey: 'fm_test_key',
-      server: Server.Production,
+      baseUrl: 'http://localhost:3080/v1',
     });
 
-    expect(config.baseUrl).toBe('https://api.funnelmob.com/v1');
-  });
-
-  it('returns correct sandbox base URL', () => {
-    const config = new FunnelMobConfiguration({
-      apiKey: 'fm_test_key',
-      server: Server.Sandbox,
-    });
-
-    expect(config.baseUrl).toBe('https://sandbox.funnelmob.com/v1');
+    expect(config.baseUrl).toBe('http://localhost:3080/v1');
   });
 });
