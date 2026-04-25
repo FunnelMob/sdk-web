@@ -1,8 +1,9 @@
 /**
  * Default base URL for the FunnelMob API. Used when no `baseUrl` override
- * is supplied on the Configuration.
+ * is supplied on the Configuration. The SDK appends `/v1/<endpoint>` to
+ * this root for every request.
  */
-const DEFAULT_BASE_URL = 'https://api.funnelmob.com/v1';
+const DEFAULT_BASE_URL = 'https://api.funnelmob.com';
 
 /**
  * Log level options
@@ -24,8 +25,10 @@ export class FunnelMobConfiguration {
   readonly apiKey: string;
 
   /**
-   * Base URL for API calls. Defaults to the production endpoint. Override
-   * only for local development against a non-production backend.
+   * Base URL for API calls. Defaults to the production endpoint
+   * (`https://api.funnelmob.com`). The SDK appends `/v1/<endpoint>`
+   * itself, so pass the host root only (e.g. `http://localhost:3080`
+   * for local development). Trailing slashes are trimmed.
    */
   readonly baseUrl: string;
 
@@ -46,9 +49,15 @@ export class FunnelMobConfiguration {
     maxBatchSize?: number;
   }) {
     this.apiKey = options.apiKey;
-    this.baseUrl = options.baseUrl ?? DEFAULT_BASE_URL;
+    this.baseUrl = normalizeBaseUrl(options.baseUrl) ?? DEFAULT_BASE_URL;
     this.logLevel = options.logLevel ?? LogLevel.None;
     this.flushIntervalMs = Math.max(1000, options.flushIntervalMs ?? 30000);
     this.maxBatchSize = Math.min(100, Math.max(1, options.maxBatchSize ?? 100));
   }
+}
+
+function normalizeBaseUrl(url: string | undefined): string | undefined {
+  if (url === undefined) return undefined;
+  const trimmed = url.replace(/\/+$/, '');
+  return trimmed.length === 0 ? undefined : trimmed;
 }

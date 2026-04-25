@@ -20,7 +20,7 @@ export class NetworkClient {
     request: SessionRequest,
     configuration: FunnelMobConfiguration
   ): Promise<SessionResponse> {
-    const url = `${configuration.baseUrl}/session`;
+    const url = `${configuration.baseUrl}/v1/session`;
 
     const response = await fetch(url, {
       method: 'POST',
@@ -46,7 +46,7 @@ export class NetworkClient {
     request: IdentifyRequest,
     configuration: FunnelMobConfiguration
   ): Promise<IdentifyResponse> {
-    const url = `${configuration.baseUrl}/identify`;
+    const url = `${configuration.baseUrl}/v1/identify`;
 
     const response = await fetch(url, {
       method: 'POST',
@@ -84,7 +84,7 @@ export class NetworkClient {
       batch.user_id = userId;
     }
 
-    const url = `${configuration.baseUrl}/events`;
+    const url = `${configuration.baseUrl}/v1/events`;
 
     const response = await fetch(url, {
       method: 'POST',
@@ -107,7 +107,7 @@ export class NetworkClient {
   async fetchConfig(
     configuration: FunnelMobConfiguration
   ): Promise<Record<string, unknown>> {
-    const url = `${configuration.baseUrl}/config`;
+    const url = `${configuration.baseUrl}/v1/config`;
 
     const response = await fetch(url, {
       method: 'GET',

@@ -22,7 +22,6 @@ import { FunnelMob, FunnelMobConfiguration } from '@funnelmob/sdk';
 
 // Configure the SDK
 const config = new FunnelMobConfiguration({
-  appId: 'com.example.myapp',
   apiKey: 'fm_live_abc123',
 });
 
@@ -44,25 +43,26 @@ window.addEventListener('beforeunload', () => {
 import { FunnelMobConfiguration, LogLevel } from '@funnelmob/sdk';
 
 const config = new FunnelMobConfiguration({
-  appId: 'com.example.myapp',       // Required: Your app identifier
   apiKey: 'fm_live_abc123',         // Required: Your API key
   logLevel: LogLevel.None,          // Optional: None, Error, Warning, Info, Debug, Verbose
   flushIntervalMs: 30000,           // Optional: Auto-flush interval in ms (min: 1000, default: 30000)
   maxBatchSize: 100,                // Optional: Events per batch (1-100, default: 100)
+  baseUrl: 'http://localhost:3080', // Optional: Override the API host (default: https://api.funnelmob.com)
 });
 ```
 
 ### Overriding the base URL (local development)
 
-By default the SDK POSTs to `https://api.funnelmob.com/v1`. For local development against a dev backend, pass an explicit `baseUrl`:
+By default the SDK POSTs to `https://api.funnelmob.com`, appending `/v1/<endpoint>` to each request. For local development against a dev backend, pass an explicit `baseUrl` containing the **host root only** (the SDK adds `/v1`):
 
 ```typescript
 const config = new FunnelMobConfiguration({
-  appId: 'com.example.myapp',
   apiKey: 'fm_live_abc123',
-  baseUrl: 'http://localhost:3080/v1',
+  baseUrl: 'http://localhost:3080',
 });
 ```
+
+A trailing slash on `baseUrl` is trimmed automatically.
 
 ## Event Tracking
 
@@ -198,7 +198,6 @@ import { FunnelMob, FunnelMobConfiguration } from '@funnelmob/sdk';
 function App() {
   useEffect(() => {
     const config = new FunnelMobConfiguration({
-      appId: 'com.example.myapp',
       apiKey: 'fm_live_abc123',
     });
     FunnelMob.shared.initialize(config);
@@ -219,7 +218,6 @@ function App() {
 import { FunnelMob, FunnelMobConfiguration } from '@funnelmob/sdk';
 
 const config = new FunnelMobConfiguration({
-  appId: 'com.example.myapp',
   apiKey: 'fm_live_abc123',
 });
 FunnelMob.shared.initialize(config);
@@ -272,7 +270,6 @@ Errors are logged to the console rather than thrown. Set `logLevel` to see valid
 
 ```typescript
 const config = new FunnelMobConfiguration({
-  appId: 'com.example.myapp',
   apiKey: 'fm_live_abc123',
   logLevel: LogLevel.Debug,  // See validation errors in console
 });

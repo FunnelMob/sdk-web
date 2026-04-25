@@ -8,7 +8,7 @@ describe('FunnelMobConfiguration', () => {
     });
 
     expect(config.apiKey).toBe('fm_test_key');
-    expect(config.baseUrl).toBe('https://api.funnelmob.com/v1');
+    expect(config.baseUrl).toBe('https://api.funnelmob.com');
     expect(config.logLevel).toBe(LogLevel.None);
     expect(config.flushIntervalMs).toBe(30000);
     expect(config.maxBatchSize).toBe(100);
@@ -54,9 +54,27 @@ describe('FunnelMobConfiguration', () => {
   it('uses the explicit baseUrl override when provided', () => {
     const config = new FunnelMobConfiguration({
       apiKey: 'fm_test_key',
-      baseUrl: 'http://localhost:3080/v1',
+      baseUrl: 'http://localhost:3080',
     });
 
-    expect(config.baseUrl).toBe('http://localhost:3080/v1');
+    expect(config.baseUrl).toBe('http://localhost:3080');
+  });
+
+  it('trims a trailing slash from baseUrl', () => {
+    const config = new FunnelMobConfiguration({
+      apiKey: 'fm_test_key',
+      baseUrl: 'http://localhost:3080/',
+    });
+
+    expect(config.baseUrl).toBe('http://localhost:3080');
+  });
+
+  it('falls back to the default when baseUrl is empty', () => {
+    const config = new FunnelMobConfiguration({
+      apiKey: 'fm_test_key',
+      baseUrl: '',
+    });
+
+    expect(config.baseUrl).toBe('https://api.funnelmob.com');
   });
 });
