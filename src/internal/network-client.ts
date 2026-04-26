@@ -102,6 +102,49 @@ export class NetworkClient {
   }
 
   /**
+   * Fire-and-forget event send for page-unload paths. Uses fetch with
+   * keepalive (custom headers preserved, survives unload) and falls back
+   * to navigator.sendBeacon when keepalive is unavailable.
+   */
+  sendEventsOnUnload(
+    events: Event[],
+    deviceId: string,
+    configuration: FunnelMobConfiguration,
+    userId?: string | null
+  ): void {
+    if (events.length === 0) return;
+
+    const batch: EventBatch = {
+      platform: 'web',
+      device_id: deviceId,
+      events: events.map(serializeEvent),
+    };
+
+    if (userId) {
+      batch.user_id = userId;
+    }
+
+    const url = `${configuration.baseUrl}/v1/events`;
+    const body = JSON.stringify(batch);
+
+    try {
+      void fetch(url, {
+        method: 'POST',
+        keepalive: true,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-FM-API-Key': configuration.apiKey,
+        },
+        body,
+      });
+    } catch {
+      if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+        navigator.sendBeacon(url, new Blob([body], { type: 'application/json' }));
+      }
+    }
+  }
+
+  /**
    * Fetch remote config from the API
    */
   async fetchConfig(

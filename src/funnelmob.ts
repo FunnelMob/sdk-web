@@ -35,6 +35,8 @@ export class FunnelMob {
   private networkClient: NetworkClient;
   private deviceInfo: DeviceInfo;
   private _flushTimer: ReturnType<typeof setInterval> | null = null;
+  private _visibilityHandler: (() => void) | null = null;
+  private _pagehideHandler: (() => void) | null = null;
   private attributionId: string | null = null;
   private attributionCallbacks: AttributionCallback[] = [];
   private userId: string | null = null;
@@ -75,6 +77,7 @@ export class FunnelMob {
     this.restoreUserId();
 
     this.startFlushTimer();
+    this.registerVisibilityListeners();
     this.startSession();
     this.loadCachedConfig();
     this.fetchRemoteConfig();
@@ -179,8 +182,12 @@ export class FunnelMob {
       attributionId: this.attributionId ?? undefined,
     };
 
-    this.eventQueue.enqueue(event);
+    const queueSize = this.eventQueue.enqueue(event);
     Logger.debug(`Event queued: ${name}`);
+
+    if (this.configuration && queueSize >= this.configuration.maxBatchSize) {
+      void this.flush();
+    }
   }
 
   // MARK: - Standard Event Methods
@@ -418,6 +425,14 @@ export class FunnelMob {
       clearInterval(this._flushTimer);
       this._flushTimer = null;
     }
+    if (typeof document !== 'undefined' && this._visibilityHandler) {
+      document.removeEventListener('visibilitychange', this._visibilityHandler);
+      this._visibilityHandler = null;
+    }
+    if (typeof window !== 'undefined' && this._pagehideHandler) {
+      window.removeEventListener('pagehide', this._pagehideHandler);
+      this._pagehideHandler = null;
+    }
     this.flush();
     this.configuration = null;
     this.remoteConfig = null;
@@ -536,6 +551,36 @@ export class FunnelMob {
     this._flushTimer = setInterval(() => {
       this.flush();
     }, this.configuration.flushIntervalMs);
+  }
+
+  private registerVisibilityListeners(): void {
+    if (typeof document === 'undefined' || typeof window === 'undefined') return;
+
+    this._visibilityHandler = () => {
+      if (document.visibilityState === 'hidden') {
+        this.flushOnUnload();
+      } else if (document.visibilityState === 'visible') {
+        void this.flush();
+      }
+    };
+    document.addEventListener('visibilitychange', this._visibilityHandler);
+
+    this._pagehideHandler = () => {
+      this.flushOnUnload();
+    };
+    window.addEventListener('pagehide', this._pagehideHandler);
+  }
+
+  private flushOnUnload(): void {
+    if (!this.configuration) return;
+    const events = this.eventQueue.drainAll();
+    if (events.length === 0) return;
+    this.networkClient.sendEventsOnUnload(
+      events,
+      this.deviceInfo.deviceId,
+      this.configuration,
+      this.userId
+    );
   }
 
   private validateEventName(name: string): string | null {

@@ -16,11 +16,23 @@ export class EventQueue {
   }
 
   /**
-   * Add event to queue
+   * Add event to queue. Returns the new queue size.
    */
-  enqueue(event: Event): void {
+  enqueue(event: Event): number {
     this.events.push(event);
     this.persistEvents();
+    return this.events.length;
+  }
+
+  /**
+   * Snapshot all queued events without removing them. Used for sendBeacon
+   * unload paths where we cannot await an async response and re-queue on failure.
+   */
+  drainAll(): Event[] {
+    const batch = this.events.slice();
+    this.events = [];
+    this.persistEvents();
+    return batch;
   }
 
   /**
