@@ -37,6 +37,7 @@ describe('FunnelMob Remote Config', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFetch.mockReset();
     localStorageMock.clear();
 
     // Reset singleton

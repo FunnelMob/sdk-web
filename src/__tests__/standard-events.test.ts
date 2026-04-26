@@ -24,7 +24,7 @@ Object.defineProperty(global, 'localStorage', { value: localStorageMock });
 describe('Standard Events', () => {
   let sdk: FunnelMob;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     localStorageMock.clear();
 
@@ -39,13 +39,19 @@ describe('Standard Events', () => {
     });
 
     sdk.initialize(new FunnelMobConfiguration({ apiKey: 'test-key', logLevel: LogLevel.None }));
+
+    // initialize() auto-fires an ActivateApp event. Drain it so each test
+    // starts with an empty queue.
+    sdk.flush();
+    await new Promise((r) => setTimeout(r, 10));
+    vi.clearAllMocks();
   });
 
   afterEach(() => {
     sdk.destroy();
   });
 
-  // Helper: flush and capture the event batch sent to the server
+  // Helper: flush and capture the event batch sent to the server.
   async function getQueuedEvents(): Promise<Record<string, unknown>[]> {
     mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({}) });
     sdk.flush();
@@ -92,11 +98,6 @@ describe('Standard Events', () => {
       expect(StandardEvents.PageView).toBe('PageView');
     });
 
-    it('preserves legacy fm_-prefixed constants', () => {
-      expect(StandardEvents.PURCHASE).toBe('fm_purchase');
-      expect(StandardEvents.ADD_TO_CART).toBe('fm_add_to_cart');
-      expect(StandardEvents.REGISTRATION).toBe('fm_registration');
-    });
   });
 
   describe('trackPurchase', () => {

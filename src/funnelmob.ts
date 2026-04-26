@@ -73,6 +73,8 @@ export class FunnelMob {
     Logger.logLevel = configuration.logLevel;
     Logger.info('FunnelMob initialized');
 
+    const isFirstLaunch = this.loadAttribution() === null;
+
     // Restore persisted userId
     this.restoreUserId();
 
@@ -81,6 +83,14 @@ export class FunnelMob {
     this.startSession();
     this.loadCachedConfig();
     this.fetchRemoteConfig();
+
+    if (isFirstLaunch) {
+      this.trackActivateApp(
+        new FunnelMobEventParameters().set('is_first_session', true)
+      );
+    } else {
+      this.trackActivateApp();
+    }
   }
 
   /**
@@ -336,7 +346,11 @@ export class FunnelMob {
     this.trackStandard('CompleteTutorial', parameters);
   }
 
-  /** Meta only — app launch or open */
+  /**
+   * App launch / activate. Fired automatically by `init()` on every page
+   * load. The first launch on a given browser includes an
+   * `is_first_session: true` parameter.
+   */
   trackActivateApp(parameters?: FunnelMobEventParameters): void {
     this.trackStandard('ActivateApp', parameters);
   }

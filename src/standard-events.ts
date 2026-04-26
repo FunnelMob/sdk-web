@@ -1,18 +1,11 @@
 /**
- * Standard event names for common actions
+ * Standard event names for common actions.
+ *
+ * Names mirror Meta/TikTok Standard Events verbatim so the postback layer
+ * does not need to translate. ActivateApp is fired automatically by init().
  */
 export const StandardEvents = {
-  // Legacy fm_-prefixed names (kept for backwards compatibility)
-  REGISTRATION: 'fm_registration',
-  LOGIN: 'fm_login',
-  PURCHASE: 'fm_purchase',
-  SUBSCRIBE: 'fm_subscribe',
-  TUTORIAL_COMPLETE: 'fm_tutorial_complete',
-  LEVEL_COMPLETE: 'fm_level_complete',
-  ADD_TO_CART: 'fm_add_to_cart',
-  CHECKOUT: 'fm_checkout',
-
-  // Standard Meta/TikTok event names
+  ActivateApp: 'ActivateApp',
   PageView: 'PageView',
   ViewContent: 'ViewContent',
   Search: 'Search',
@@ -39,7 +32,6 @@ export const StandardEvents = {
   SpentCredits: 'SpentCredits',
   Rate: 'Rate',
   CompleteTutorial: 'CompleteTutorial',
-  ActivateApp: 'ActivateApp',
   InAppAdClick: 'InAppAdClick',
   InAppAdImpression: 'InAppAdImpression',
 } as const;
