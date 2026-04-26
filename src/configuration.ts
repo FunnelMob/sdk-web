@@ -58,6 +58,8 @@ export class FunnelMobConfiguration {
 
 function normalizeBaseUrl(url: string | undefined): string | undefined {
   if (url === undefined) return undefined;
-  const trimmed = url.replace(/\/+$/, '');
+  // Strip surrounding whitespace and any trailing slashes; treat the result
+  // as "no override" if nothing meaningful is left.
+  const trimmed = url.trim().replace(/\/+$/, '');
   return trimmed.length === 0 ? undefined : trimmed;
 }

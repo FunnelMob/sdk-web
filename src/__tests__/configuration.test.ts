@@ -77,4 +77,22 @@ describe('FunnelMobConfiguration', () => {
 
     expect(config.baseUrl).toBe('https://api.funnelmob.com');
   });
+
+  it('trims multiple trailing slashes from baseUrl', () => {
+    const config = new FunnelMobConfiguration({
+      apiKey: 'fm_test_key',
+      baseUrl: 'http://localhost:3080///',
+    });
+
+    expect(config.baseUrl).toBe('http://localhost:3080');
+  });
+
+  it('falls back to the default when baseUrl is whitespace-only', () => {
+    const config = new FunnelMobConfiguration({
+      apiKey: 'fm_test_key',
+      baseUrl: '   ',
+    });
+
+    expect(config.baseUrl).toBe('https://api.funnelmob.com');
+  });
 });
