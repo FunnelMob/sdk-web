@@ -519,6 +519,12 @@ export class FunnelMob {
       window.removeEventListener('pagehide', this._pagehideHandler);
       this._pagehideHandler = null;
     }
+    if (this.identifierDebounceTimer) {
+      clearTimeout(this.identifierDebounceTimer);
+      this.identifierDebounceTimer = null;
+    }
+    this.isIdentifierDirty = false;
+    this.isReFireInFlight = false;
     this.flush();
     this.configuration = null;
     this.remoteConfig = null;
@@ -569,6 +575,15 @@ export class FunnelMob {
     const config = this.configuration;
     if (!config) return;
 
+    // Snapshot and clear the dirty bit before sending. This POST already
+    // carries the current identifier set, so a successful round-trip means
+    // we've delivered them; clearing here avoids a redundant re-fire on the
+    // first visibility-change. If a setter races during the in-flight POST
+    // it sets dirty back to true and the next debounce/visibility tick
+    // re-fires.
+    const wasDirty = this.isIdentifierDirty;
+    this.isIdentifierDirty = false;
+
     try {
       const response = await this.networkClient.sendSession(
         this.buildSessionRequest(true),
@@ -585,6 +600,8 @@ export class FunnelMob {
     } catch (error) {
       Logger.error(`Attribution request failed: ${error}`);
       this.notifyCallbacks(null);
+      // Restore dirty so the next visibility-change / setter re-fires.
+      if (wasDirty) this.isIdentifierDirty = true;
     }
   }
 
