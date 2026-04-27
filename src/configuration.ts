@@ -41,18 +41,50 @@ export class FunnelMobConfiguration {
   /** Maximum number of events per batch */
   readonly maxBatchSize: number;
 
+  /**
+   * Whether the SDK starts its active components (attribution session,
+   * flush timer, visibility/pagehide listeners, automatic ActivateApp event,
+   * remote config fetch) immediately when `initialize()` is called.
+   *
+   * Defaults to `true`. Set to `false` when you need to defer the SDK's
+   * network and event activity until you have obtained user consent
+   * (e.g. GDPR). When `false`, you must call `FunnelMob.shared.start()`
+   * after consent is granted.
+   *
+   * By calling `start()` you represent that you have obtained any user
+   * consent required by applicable law.
+   */
+  readonly autoStart: boolean;
+
+  /**
+   * Whether the SDK automatically writes the Meta `_fbp` cookie and parses
+   * `_fbc` from the URL `?fbclid=` parameter on `start()`. Defaults to
+   * `true` — matches Meta Pixel's behavior.
+   *
+   * Set to `false` when the host application manages cookies itself (e.g.
+   * a custom consent stack that needs to gate cookie writes after the user
+   * accepts a banner). When false, the host should call
+   * `FunnelMob.shared.setBrowserIdentifiers({ fbp, fbc })` after consent
+   * to supply the values.
+   */
+  readonly autoCollectBrowserIds: boolean;
+
   constructor(options: {
     apiKey: string;
     baseUrl?: string;
     logLevel?: LogLevel;
     flushIntervalMs?: number;
     maxBatchSize?: number;
+    autoStart?: boolean;
+    autoCollectBrowserIds?: boolean;
   }) {
     this.apiKey = options.apiKey;
     this.baseUrl = normalizeBaseUrl(options.baseUrl) ?? DEFAULT_BASE_URL;
     this.logLevel = options.logLevel ?? LogLevel.None;
     this.flushIntervalMs = Math.max(1000, options.flushIntervalMs ?? 30000);
     this.maxBatchSize = Math.min(100, Math.max(1, options.maxBatchSize ?? 100));
+    this.autoStart = options.autoStart ?? true;
+    this.autoCollectBrowserIds = options.autoCollectBrowserIds ?? true;
   }
 }
 

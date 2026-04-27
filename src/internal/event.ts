@@ -78,6 +78,32 @@ export interface SessionRequest {
   is_first_session: boolean;
   referrer_token?: string;
   context?: DeviceContext;
+  /**
+   * IDFA — never set on web (iOS-only). Field exists for cross-platform
+   * payload symmetry; backend ignores it for web requests.
+   */
+  idfa?: string;
+  /** GAID — never set on web (Android-only). */
+  gaid?: string;
+  /**
+   * Meta browser cookie `_fbp`. Auto-collected by the SDK on `start()`
+   * when `Configuration.autoCollectBrowserIds` is true (the default), or
+   * supplied explicitly via `setBrowserIdentifiers`.
+   */
+  fbp?: string;
+  /** Meta click cookie `_fbc`. Auto-built from `?fbclid=` URL param on `start()`. */
+  fbc?: string;
+  /**
+   * SHA256-hex of normalized email (lowercase + trim, then SHA256).
+   * The SDK never sees raw PII — the host is responsible for hashing.
+   */
+  email_sha256?: string;
+  /** SHA256-hex of normalized phone (E.164 format pre-hash). */
+  phone_sha256?: string;
+  /** SHA256-hex of an external user identifier (CRM ID, auth user ID). */
+  external_id_sha256?: string;
+  /** iOS ATT status — never set on web. */
+  att_status?: string;
 }
 
 /**

@@ -5,7 +5,19 @@ import { EventQueue } from './internal/event-queue';
 import { NetworkClient } from './internal/network-client';
 import { DeviceInfo } from './internal/device-info';
 import { Logger } from './internal/logger';
-import type { Event, AttributionResult, IdentifyRequest } from './internal/event';
+import type {
+  Event,
+  AttributionResult,
+  IdentifyRequest,
+  SessionRequest,
+} from './internal/event';
+import {
+  readCookie,
+  writeCookie,
+  generateFbp,
+  buildFbc,
+  readUrlParam,
+} from './internal/cookies';
 
 const ATTRIBUTION_STORAGE_KEY = 'fm_attribution';
 const USER_ID_STORAGE_KEY = 'fm_user_id';
@@ -31,6 +43,7 @@ export class FunnelMob {
 
   private configuration: FunnelMobConfiguration | null = null;
   private isEnabled = true;
+  private isStarted = false;
   private eventQueue: EventQueue;
   private networkClient: NetworkClient;
   private deviceInfo: DeviceInfo;
@@ -43,6 +56,19 @@ export class FunnelMob {
   private userProperties: Record<string, string | number | boolean> | null = null;
   private remoteConfig: Record<string, unknown> | null = null;
   private configCallbacks: ConfigLoadedCallback[] = [];
+
+  // ─── User identifiers ─────────────────────────────────────────────────
+  // In-memory only — never persisted to localStorage. The host re-supplies
+  // hashed PII on each launch from its auth state.
+  private fbp: string | null = null;
+  private fbc: string | null = null;
+  private hashedEmail: string | null = null;
+  private hashedPhone: string | null = null;
+  private hashedExternalId: string | null = null;
+  private isIdentifierDirty = false;
+  private isReFireInFlight = false;
+  private identifierDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private static readonly IDENTIFIER_DEBOUNCE_MS = 1000;
 
   private constructor() {
     this.eventQueue = new EventQueue();
@@ -61,7 +87,16 @@ export class FunnelMob {
   }
 
   /**
-   * Initialize the SDK with configuration
+   * Initialize the SDK with configuration.
+   *
+   * When `configuration.autoStart` is `true` (the default), this method
+   * also calls `start()` to begin attribution, the flush timer, visibility
+   * listeners, and the ActivateApp event.
+   *
+   * When `configuration.autoStart` is `false`, this method only wires up
+   * internal state (no network activity, no event tracking). Call `start()`
+   * explicitly once you have obtained any user consent required by
+   * applicable law.
    */
   initialize(configuration: FunnelMobConfiguration): void {
     if (this.configuration) {
@@ -73,15 +108,47 @@ export class FunnelMob {
     Logger.logLevel = configuration.logLevel;
     Logger.info('FunnelMob initialized');
 
-    const isFirstLaunch = this.loadAttribution() === null;
-
-    // Restore persisted userId
     this.restoreUserId();
+    this.loadCachedConfig();
+
+    if (configuration.autoStart) {
+      this.start();
+    } else {
+      Logger.info('autoStart disabled — call FunnelMob.shared.start() when ready');
+    }
+  }
+
+  /**
+   * Start the SDK's active components: attribution session, remote config
+   * fetch, flush timer, visibility/pagehide listeners, and the automatic
+   * ActivateApp event.
+   *
+   * Called automatically by `initialize()` when `Configuration.autoStart`
+   * is `true` (the default). When `autoStart` is `false`, the host
+   * application must call `start()` explicitly — typically after obtaining
+   * user consent (GDPR, CCPA, etc.).
+   *
+   * By calling `start()`, you represent that you have obtained any user
+   * consent required by applicable law for the data the SDK will collect
+   * and transmit.
+   */
+  start(): void {
+    if (!this.configuration) {
+      Logger.error('FunnelMob not initialized. Call initialize() first.');
+      return;
+    }
+    if (this.isStarted) {
+      Logger.warning('FunnelMob already started');
+      return;
+    }
+    this.isStarted = true;
+
+    const isFirstLaunch = this.loadAttribution() === null;
 
     this.startFlushTimer();
     this.registerVisibilityListeners();
+    this.collectBrowserIdentifiers();
     this.startSession();
-    this.loadCachedConfig();
     this.fetchRemoteConfig();
 
     if (isFirstLaunch) {
@@ -162,6 +229,11 @@ export class FunnelMob {
 
     if (!this.configuration) {
       Logger.error('FunnelMob not initialized. Call initialize() first.');
+      return;
+    }
+
+    if (!this.isStarted) {
+      Logger.debug(`FunnelMob not started, ignoring event: ${name}`);
       return;
     }
 
@@ -451,6 +523,7 @@ export class FunnelMob {
     this.configuration = null;
     this.remoteConfig = null;
     this.configCallbacks = [];
+    this.isStarted = false;
     Logger.info('FunnelMob destroyed');
   }
 
@@ -497,22 +570,8 @@ export class FunnelMob {
     if (!config) return;
 
     try {
-      const context = this.deviceInfo.toContext();
       const response = await this.networkClient.sendSession(
-        {
-          device_id: this.deviceInfo.deviceId,
-          session_id: this.generateUUID(),
-          platform: 'web',
-          timestamp: new Date().toISOString(),
-          is_first_session: true,
-          context: {
-            user_agent: context.userAgent,
-            language: context.language,
-            timezone: context.timezone,
-            screen_width: context.screenWidth,
-            screen_height: context.screenHeight,
-          },
-        },
+        this.buildSessionRequest(true),
         config
       );
 
@@ -526,6 +585,176 @@ export class FunnelMob {
     } catch (error) {
       Logger.error(`Attribution request failed: ${error}`);
       this.notifyCallbacks(null);
+    }
+  }
+
+  /**
+   * Build a `SessionRequest` populated with the current in-memory
+   * identifier set. Shared between the first-session attribution path and
+   * the debounced re-fire path so both produce identically-shaped payloads.
+   */
+  private buildSessionRequest(isFirstSession: boolean): SessionRequest {
+    const context = this.deviceInfo.toContext();
+    const request: SessionRequest = {
+      device_id: this.deviceInfo.deviceId,
+      session_id: this.generateUUID(),
+      platform: 'web',
+      timestamp: new Date().toISOString(),
+      is_first_session: isFirstSession,
+      context: {
+        user_agent: context.userAgent,
+        language: context.language,
+        timezone: context.timezone,
+        screen_width: context.screenWidth,
+        screen_height: context.screenHeight,
+      },
+    };
+    if (this.fbp) request.fbp = this.fbp;
+    if (this.fbc) request.fbc = this.fbc;
+    if (this.hashedEmail) request.email_sha256 = this.hashedEmail;
+    if (this.hashedPhone) request.phone_sha256 = this.hashedPhone;
+    if (this.hashedExternalId) request.external_id_sha256 = this.hashedExternalId;
+    return request;
+  }
+
+  // ─── Browser identifier auto-collection ───────────────────────────────
+
+  /**
+   * Auto-write the Meta `_fbp` cookie if absent and the `_fbc` cookie when
+   * a `fbclid` URL parameter is present. No-op when
+   * `Configuration.autoCollectBrowserIds` is false (the host manages
+   * cookies itself) or when there's no `document` (SSR / non-browser).
+   *
+   * Mirrors what Meta Pixel does on script load. Cookie attributes match
+   * the Pixel: 90-day max-age, SameSite=Lax, Secure on HTTPS, first-party
+   * on the host's domain.
+   */
+  private collectBrowserIdentifiers(): void {
+    if (!this.configuration?.autoCollectBrowserIds) return;
+    if (typeof document === 'undefined') return;
+
+    let fbp = readCookie('_fbp');
+    if (!fbp) {
+      fbp = generateFbp();
+      writeCookie('_fbp', fbp);
+    }
+    this.fbp = fbp;
+
+    const freshFbclid = readUrlParam('fbclid');
+    if (freshFbclid) {
+      const fbc = buildFbc(freshFbclid);
+      writeCookie('_fbc', fbc);
+      this.fbc = fbc;
+    } else {
+      this.fbc = readCookie('_fbc');
+    }
+  }
+
+  // ─── User identifier setters ──────────────────────────────────────────
+
+  /**
+   * Set the SHA256-hex hash of the user's email (lowercase + trim, then
+   * SHA256). Forwarded to Meta CAPI as `user_data.em` and TikTok Events
+   * as `user.email`. The SDK never sees the raw value — the host is
+   * responsible for normalization and hashing.
+   */
+  setHashedEmail(sha256: string | null): void {
+    this.hashedEmail = sha256;
+    Logger.debug(`Hashed email ${sha256 == null ? 'cleared' : 'set'}`);
+    this.markIdentifierDirty();
+  }
+
+  /**
+   * Set the SHA256-hex hash of the user's phone number (E.164 format
+   * pre-hash, e.g. `+12025551234`).
+   */
+  setHashedPhone(sha256: string | null): void {
+    this.hashedPhone = sha256;
+    Logger.debug(`Hashed phone ${sha256 == null ? 'cleared' : 'set'}`);
+    this.markIdentifierDirty();
+  }
+
+  /**
+   * Set the SHA256-hex hash of an external user identifier (CRM ID, auth
+   * user ID).
+   */
+  setHashedExternalId(sha256: string | null): void {
+    this.hashedExternalId = sha256;
+    Logger.debug(
+      `Hashed external_id ${sha256 == null ? 'cleared' : 'set'}`
+    );
+    this.markIdentifierDirty();
+  }
+
+  /**
+   * Manually supply Meta browser identifier cookie values. Useful when
+   * `Configuration.autoCollectBrowserIds` is false (the host's consent
+   * stack manages cookies) and the host wants to forward already-set
+   * cookie values to the SDK after consent.
+   */
+  setBrowserIdentifiers(values: { fbp?: string | null; fbc?: string | null }): void {
+    if (values.fbp !== undefined) this.fbp = values.fbp;
+    if (values.fbc !== undefined) this.fbc = values.fbc;
+    this.markIdentifierDirty();
+  }
+
+  /**
+   * Bypass the 1-second debounce and immediately fire a `/v1/session`
+   * re-fire if any identifier has changed since the last successful POST.
+   * No-op if not started or not dirty. Useful for tests and for hosts
+   * that want a synchronous confirmation point.
+   */
+  flushIdentifiers(): void {
+    if (this.identifierDebounceTimer) {
+      clearTimeout(this.identifierDebounceTimer);
+      this.identifierDebounceTimer = null;
+    }
+    void this.triggerIdentifierReFire();
+  }
+
+  // ─── Identifier debounce + re-fire (private) ──────────────────────────
+
+  private markIdentifierDirty(): void {
+    this.isIdentifierDirty = true;
+    if (!this.isStarted) return;
+    if (this.isReFireInFlight) return;
+    this.scheduleIdentifierDebounce();
+  }
+
+  private scheduleIdentifierDebounce(): void {
+    if (this.identifierDebounceTimer) {
+      clearTimeout(this.identifierDebounceTimer);
+    }
+    this.identifierDebounceTimer = setTimeout(() => {
+      this.identifierDebounceTimer = null;
+      void this.triggerIdentifierReFire();
+    }, FunnelMob.IDENTIFIER_DEBOUNCE_MS);
+  }
+
+  private async triggerIdentifierReFire(): Promise<void> {
+    if (!this.isStarted) return;
+    if (!this.isIdentifierDirty) return;
+    const config = this.configuration;
+    if (!config) return;
+
+    this.isReFireInFlight = true;
+    this.isIdentifierDirty = false;
+
+    try {
+      await this.networkClient.sendSession(
+        this.buildSessionRequest(false),
+        config
+      );
+      Logger.debug('Identifier re-fire succeeded');
+    } catch (error) {
+      // Restore dirty so next setter / visibility-change recovers.
+      this.isIdentifierDirty = true;
+      Logger.warning(`Identifier re-fire failed: ${error}`);
+    } finally {
+      this.isReFireInFlight = false;
+      if (this.isIdentifierDirty) {
+        this.scheduleIdentifierDebounce();
+      }
     }
   }
 
@@ -575,6 +804,9 @@ export class FunnelMob {
         this.flushOnUnload();
       } else if (document.visibilityState === 'visible') {
         void this.flush();
+        // Recover any pending identifier re-fire that lost a previous
+        // POST attempt while the tab was hidden.
+        this.flushIdentifiers();
       }
     };
     document.addEventListener('visibilitychange', this._visibilityHandler);
