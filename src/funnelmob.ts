@@ -25,6 +25,14 @@ const USER_ID_STORAGE_KEY = 'fm_user_id';
 const REMOTE_CONFIG_STORAGE_KEY = 'fm_remote_config';
 const REMOTE_CONFIG_TS_KEY = 'fm_remote_config_ts';
 const CONFIG_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+/**
+ * Persistent boolean marker used to decide whether the SDK should fire the
+ * one-time `ActivateApp(is_first_session: true)` event on this cold start.
+ * Set after the first launch's events have been enqueued so subsequent
+ * launches don't re-fire them. Stored in localStorage; clears when the
+ * user clears site data, which is the correct equivalent of "uninstall."
+ */
+const FIRST_LAUNCH_COMPLETED_KEY = 'fm_first_launch_completed';
 
 /**
  * Callback type for attribution results
@@ -152,18 +160,24 @@ export class FunnelMob {
     }
     this.isStarted = true;
 
-    const isFirstLaunch = this.loadAttribution() === null;
+    const isFirstLaunch = !this.loadFirstLaunchCompleted();
 
     this.startFlushTimer();
     this.registerVisibilityListeners();
     this.collectBrowserIdentifiers();
-    this.startSession();
+    this.startSession(isFirstLaunch);
     this.fetchRemoteConfig();
 
     if (isFirstLaunch) {
       this.trackActivateApp(
         new FunnelMobEventParameters().set('is_first_session', true)
       );
+      // Set the marker AFTER the first-launch event is enqueued.
+      // Semantic B: if consent blocks dispatch, the event is dropped at the
+      // consent gate but the marker is still set, so ActivateApp(first) never
+      // fires again — matches the SDK's "consent denied = nothing tracked,
+      // ever" model.
+      this.saveFirstLaunchCompleted();
     } else {
       this.trackActivateApp();
     }
@@ -575,25 +589,37 @@ export class FunnelMob {
     }
   }
 
-  private startSession(): void {
-    // Check for existing attribution
+  /**
+   * Send the per-cold-start `/v1/session` ping and (on first launch only)
+   * receive the attribution result from the backend. Cached attribution
+   * still drives the immediate callback fire — only the network POST is
+   * gated by `isFirstLaunch`, never by attribution presence.
+   */
+  private startSession(isFirstLaunch: boolean): void {
+    // Notify callbacks immediately when we already have a stored
+    // attribution result, so the host's onAttribution handler fires
+    // without waiting for the network round-trip. This runs even on
+    // subsequent cold starts — the cached attribution remains valid for
+    // the device's lifetime.
     const stored = this.loadAttribution();
     if (stored) {
       this.attributionId = stored.attribution_id;
       Logger.debug('Loaded existing attribution');
       this.notifyCallbacks(stored);
-      return;
     }
 
-    // First session — request attribution from server
-    this.requestAttribution();
+    // Always POST /v1/session on cold start. The backend uses the
+    // is_first_session flag to decide whether to run the (expensive)
+    // attribution engine; subsequent sessions just refresh device
+    // identifiers and bump user_profile.last_seen_at.
+    void this.requestSession(isFirstLaunch);
   }
 
-  private async requestAttribution(): Promise<void> {
+  private async requestSession(isFirstLaunch: boolean): Promise<void> {
     const config = this.configuration;
     if (!config) return;
     if (consentBlocksDispatch(this.consent)) {
-      Logger.debug('Consent blocks dispatch, skipping initial session POST');
+      Logger.debug('Consent blocks dispatch, skipping session POST');
       return;
     }
 
@@ -608,9 +634,14 @@ export class FunnelMob {
 
     try {
       const response = await this.networkClient.sendSession(
-        this.buildSessionRequest(true),
+        this.buildSessionRequest(isFirstLaunch),
         config
       );
+
+      // The backend only runs attribution for is_first_session=true requests.
+      // On subsequent cold starts, the response contains no attribution
+      // result and there's nothing to save or notify.
+      if (!isFirstLaunch) return;
 
       if (response.attribution) {
         this.attributionId = response.attribution.attribution_id;
@@ -620,8 +651,10 @@ export class FunnelMob {
 
       this.notifyCallbacks(response.attribution ?? null);
     } catch (error) {
-      Logger.error(`Attribution request failed: ${error}`);
-      this.notifyCallbacks(null);
+      Logger.error(`Session request failed: ${error}`);
+      if (isFirstLaunch) {
+        this.notifyCallbacks(null);
+      }
       // Restore dirty so the next visibility-change / setter re-fires.
       if (wasDirty) this.isIdentifierDirty = true;
     }
@@ -872,6 +905,24 @@ export class FunnelMob {
       localStorage.setItem(ATTRIBUTION_STORAGE_KEY, JSON.stringify(result));
     } catch (error) {
       Logger.warning(`Failed to save attribution: ${error}`);
+    }
+  }
+
+  private loadFirstLaunchCompleted(): boolean {
+    try {
+      if (typeof localStorage === 'undefined') return false;
+      return localStorage.getItem(FIRST_LAUNCH_COMPLETED_KEY) === '1';
+    } catch {
+      return false;
+    }
+  }
+
+  private saveFirstLaunchCompleted(): void {
+    try {
+      if (typeof localStorage === 'undefined') return;
+      localStorage.setItem(FIRST_LAUNCH_COMPLETED_KEY, '1');
+    } catch (error) {
+      Logger.warning(`Failed to save first-launch marker: ${error}`);
     }
   }
 
