@@ -1,7 +1,7 @@
 import { FunnelMobConfiguration } from '../configuration';
 import { Event, serializeEvent } from './event';
 import { Logger } from './logger';
-import { NetworkClient } from './network-client';
+import { NetworkClient, NetworkError } from './network-client';
 
 const STORAGE_KEY = 'funnelmob_events';
 
@@ -70,6 +70,17 @@ export class EventQueue {
   }
 
   /**
+   * Prepend a previously-dequeued batch back to the queue after a
+   * retryable send failure. Preserves event ordering: the failed
+   * batch retries first, before any newer events tracked while the
+   * in-flight POST was outstanding.
+   */
+  requeue(batch: Event[]): void {
+    this.events = [...batch, ...this.events];
+    this.persistEvents();
+  }
+
+  /**
    * Flush all events
    */
   async flush(
@@ -87,10 +98,15 @@ export class EventQueue {
       await client.sendEvents(batch, deviceId, configuration, userId);
       Logger.debug(`Successfully sent ${batch.length} events`);
     } catch (error) {
-      // Re-queue events on failure
-      this.events = [...batch, ...this.events];
-      this.persistEvents();
-      Logger.error(`Failed to send events: ${error}`);
+      // Generic Errors (fetch network failures with no response) are
+      // always retryable; classified NetworkErrors check isRetryable.
+      const retryable = !(error instanceof NetworkError) || error.isRetryable;
+      if (retryable) {
+        this.requeue(batch);
+        Logger.warning(`Re-queued ${batch.length} events: ${error}`);
+      } else {
+        Logger.error(`Dropped ${batch.length} events (non-retryable): ${error}`);
+      }
     }
   }
 

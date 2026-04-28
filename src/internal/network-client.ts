@@ -196,4 +196,18 @@ export class NetworkError extends Error {
     this.name = 'NetworkError';
     this.code = code;
   }
+
+  /**
+   * Whether the failure is worth retrying. Transient transport-layer
+   * errors (server 5xx, 429 rate-limit, unknown status codes) are
+   * retryable; client-side errors (401, 4xx) are permanent and would
+   * just fail again on retry. Used by `EventQueue.flush(...)` to decide
+   * whether to re-queue a failed batch or drop it. Note: generic Errors
+   * thrown by `fetch` itself (network failures with no response) are
+   * never `NetworkError` instances and are treated as retryable by the
+   * caller.
+   */
+  get isRetryable(): boolean {
+    return this.code === 'server_error' || this.code === 'rate_limited' || this.code === 'unknown';
+  }
 }
