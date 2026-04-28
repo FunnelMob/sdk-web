@@ -1,6 +1,7 @@
 import { FunnelMobConfiguration } from './configuration';
 import { FunnelMobEventParameters } from './event-parameters';
 import { FunnelMobRevenue } from './revenue';
+import { type FunnelMobConsent, consentBlocksDispatch } from './consent';
 import { EventQueue } from './internal/event-queue';
 import { NetworkClient } from './internal/network-client';
 import { DeviceInfo } from './internal/device-info';
@@ -65,6 +66,14 @@ export class FunnelMob {
   private hashedEmail: string | null = null;
   private hashedPhone: string | null = null;
   private hashedExternalId: string | null = null;
+
+  // Consent state. `null` until the host calls setConsent(). When null,
+  // the SDK tracks normally (default — opt-in compliance). When current
+  // consent blocks dispatch, trackEvent() drops events, flush() is a
+  // no-op, and identifier/identify re-fires are suppressed. Not persisted
+  // — the CMP / cookie banner is expected to call setConsent on each page
+  // load (industry standard).
+  private consent: FunnelMobConsent | null = null;
   private isIdentifierDirty = false;
   private isReFireInFlight = false;
   private identifierDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -234,6 +243,11 @@ export class FunnelMob {
 
     if (!this.isStarted) {
       Logger.debug(`FunnelMob not started, ignoring event: ${name}`);
+      return;
+    }
+
+    if (consentBlocksDispatch(this.consent)) {
+      Logger.debug(`Consent blocks dispatch, dropping event: ${name}`);
       return;
     }
 
@@ -442,6 +456,10 @@ export class FunnelMob {
    */
   flush(): void {
     if (!this.configuration) return;
+    if (consentBlocksDispatch(this.consent)) {
+      Logger.debug('Consent blocks dispatch, skipping flush');
+      return;
+    }
     this.eventQueue.flush(this.networkClient, this.configuration, this.deviceInfo.deviceId, this.userId);
   }
 
@@ -574,6 +592,10 @@ export class FunnelMob {
   private async requestAttribution(): Promise<void> {
     const config = this.configuration;
     if (!config) return;
+    if (consentBlocksDispatch(this.consent)) {
+      Logger.debug('Consent blocks dispatch, skipping initial session POST');
+      return;
+    }
 
     // Snapshot and clear the dirty bit before sending. This POST already
     // carries the current identifier set, so a successful round-trip means
@@ -631,6 +653,20 @@ export class FunnelMob {
     if (this.hashedEmail) request.email_sha256 = this.hashedEmail;
     if (this.hashedPhone) request.phone_sha256 = this.hashedPhone;
     if (this.hashedExternalId) request.external_id_sha256 = this.hashedExternalId;
+    if (this.consent) {
+      request.consent = {
+        is_user_subject_to_gdpr: this.consent.isUserSubjectToGDPR,
+        ...(this.consent.hasConsentForDataUsage !== undefined && {
+          has_consent_for_data_usage: this.consent.hasConsentForDataUsage,
+        }),
+        ...(this.consent.hasConsentForAdsPersonalization !== undefined && {
+          has_consent_for_ads_personalization: this.consent.hasConsentForAdsPersonalization,
+        }),
+        ...(this.consent.hasConsentForAdStorage !== undefined && {
+          has_consent_for_ad_storage: this.consent.hasConsentForAdStorage,
+        }),
+      };
+    }
     return request;
   }
 
@@ -704,6 +740,35 @@ export class FunnelMob {
   }
 
   /**
+   * Record the user's GDPR / DMA consent decision.
+   *
+   * When `consent` blocks dispatch (GDPR applies and data-usage consent
+   * was denied), the SDK stops dispatching new events and purges the
+   * local queue. Otherwise, the consent state is attached to the next
+   * session payload and a re-fire is scheduled so the backend learns the
+   * new state without waiting for a natural session boundary.
+   *
+   * Calling this method is opt-in. Hosts that never call it get the SDK's
+   * default behavior (track everything). The SDK does not persist
+   * consent — the host's consent management platform / cookie banner is
+   * expected to call `setConsent` on each page load.
+   */
+  setConsent(consent: FunnelMobConsent): void {
+    this.consent = consent;
+    Logger.info(
+      `Consent updated (gdpr=${consent.isUserSubjectToGDPR}, dataUsage=${String(consent.hasConsentForDataUsage)})`
+    );
+
+    if (consentBlocksDispatch(consent)) {
+      this.eventQueue.clear();
+      Logger.info('Consent blocks dispatch — local event queue purged');
+      return;
+    }
+
+    this.markIdentifierDirty();
+  }
+
+  /**
    * Manually supply Meta browser identifier cookie values. Useful when
    * `Configuration.autoCollectBrowserIds` is false (the host's consent
    * stack manages cookies) and the host wants to forward already-set
@@ -753,6 +818,11 @@ export class FunnelMob {
     if (!this.isIdentifierDirty) return;
     const config = this.configuration;
     if (!config) return;
+    if (consentBlocksDispatch(this.consent)) {
+      Logger.debug('Consent blocks dispatch, skipping session re-fire');
+      this.isIdentifierDirty = false;
+      return;
+    }
 
     this.isReFireInFlight = true;
     this.isIdentifierDirty = false;
@@ -859,6 +929,10 @@ export class FunnelMob {
   private async sendIdentify(): Promise<void> {
     const config = this.configuration;
     if (!config || !this.userId) return;
+    if (consentBlocksDispatch(this.consent)) {
+      Logger.debug('Consent blocks dispatch, skipping identify');
+      return;
+    }
 
     try {
       const context = this.deviceInfo.toContext();

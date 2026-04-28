@@ -53,6 +53,23 @@ export class EventQueue {
   }
 
   /**
+   * Drop every queued event from memory and persistent storage.
+   * Used when the user revokes consent — GDPR requires the SDK to
+   * stop processing further data, including data already in flight
+   * to the network layer.
+   */
+  clear(): void {
+    this.events = [];
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem(STORAGE_KEY);
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  /**
    * Flush all events
    */
   async flush(

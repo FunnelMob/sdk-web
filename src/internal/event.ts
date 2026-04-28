@@ -104,6 +104,23 @@ export interface SessionRequest {
   external_id_sha256?: string;
   /** iOS ATT status — never set on web. */
   att_status?: string;
+  /**
+   * Per-user consent state (GDPR / DMA). Optional — when absent, the host
+   * has not configured consent and the backend should treat the session
+   * as non-EEA / no-restriction.
+   */
+  consent?: ConsentPayload;
+}
+
+/**
+ * Wire-format consent payload attached to session requests. Mirrors
+ * `FunnelMobConsent` with snake_case field names.
+ */
+export interface ConsentPayload {
+  is_user_subject_to_gdpr: boolean;
+  has_consent_for_data_usage?: boolean;
+  has_consent_for_ads_personalization?: boolean;
+  has_consent_for_ad_storage?: boolean;
 }
 
 /**
