@@ -101,11 +101,18 @@ export class EventQueue {
       // Generic Errors (fetch network failures with no response) are
       // always retryable; classified NetworkErrors check isRetryable.
       const retryable = !(error instanceof NetworkError) || error.isRetryable;
-      if (retryable) {
+      if (!retryable) {
+        Logger.error(`Dropped ${batch.length} events (non-retryable): ${error}`);
+        return;
+      }
+      // Retry queue is gated behind a config flag because the backend
+      // `events` table lacks `event_id` dedup. With dedup off, retrying a
+      // POST whose response was lost duplicates rows. Default off.
+      if (configuration.enableRetryQueue) {
         this.requeue(batch);
         Logger.warning(`Re-queued ${batch.length} events: ${error}`);
       } else {
-        Logger.error(`Dropped ${batch.length} events (non-retryable): ${error}`);
+        Logger.error(`Dropped ${batch.length} events (retryable, but enableRetryQueue=false): ${error}`);
       }
     }
   }

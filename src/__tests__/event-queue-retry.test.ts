@@ -30,11 +30,15 @@ function makeEvent(name: string): Event {
   };
 }
 
-function makeConfig() {
+function makeConfig(overrides: { enableRetryQueue?: boolean } = {}) {
   return new FunnelMobConfiguration({
     apiKey: 'fm_test_key',
     logLevel: LogLevel.None,
     maxBatchSize: 100,
+    // Retry behavior is gated behind a config flag (default off) until
+    // backend event-id dedup ships. These tests exercise the retry path
+    // explicitly, so opt in.
+    enableRetryQueue: overrides.enableRetryQueue ?? true,
   });
 }
 
@@ -179,6 +183,23 @@ describe('EventQueue flush retry semantics', () => {
     // Simulate a page reload: new EventQueue instance reads from localStorage
     const reloadedQueue = new EventQueue();
     expect(reloadedQueue.count).toBe(1);
+  });
+
+  it('with enableRetryQueue=false (default), retryable failures DROP the batch', async () => {
+    queue.enqueue(makeEvent('A'));
+    queue.enqueue(makeEvent('B'));
+    expect(queue.count).toBe(2);
+
+    vi.spyOn(client, 'sendEvents').mockRejectedValueOnce(
+      new NetworkError('Server error', 'server_error')
+    );
+
+    // Default-off config: retryable error logs at error level but events drop.
+    await queue.flush(client, makeConfig({ enableRetryQueue: false }), 'device-1', null);
+
+    // Batch must be DROPPED, not re-queued — protects against duplicate
+    // revenue events while backend events table lacks event_id dedup.
+    expect(queue.count).toBe(0);
   });
 
   it('NetworkError.isRetryable correctly classifies all status codes', () => {

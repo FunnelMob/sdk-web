@@ -69,6 +69,21 @@ export class FunnelMobConfiguration {
    */
   readonly autoCollectBrowserIds: boolean;
 
+  /**
+   * Whether the EventQueue re-queues a batch on retryable send failures
+   * (5xx, 429, generic network errors) instead of dropping it. Defaults to
+   * `false`.
+   *
+   * Why default-off: the backend `events` table is currently a plain
+   * `MergeTree` (no `event_id` dedup). Until it migrates to
+   * `ReplacingMergeTree(inserted_at)` keyed on `event_id`, a successful
+   * POST whose response is lost (TCP RST after server commit, gateway
+   * timeout) becomes a duplicate row on retry — and revenue events would
+   * be double-counted. Set to `true` only in environments where you
+   * accept duplicates, or once backend dedup ships.
+   */
+  readonly enableRetryQueue: boolean;
+
   constructor(options: {
     apiKey: string;
     baseUrl?: string;
@@ -77,6 +92,7 @@ export class FunnelMobConfiguration {
     maxBatchSize?: number;
     autoStart?: boolean;
     autoCollectBrowserIds?: boolean;
+    enableRetryQueue?: boolean;
   }) {
     this.apiKey = options.apiKey;
     this.baseUrl = normalizeBaseUrl(options.baseUrl) ?? DEFAULT_BASE_URL;
@@ -85,6 +101,7 @@ export class FunnelMobConfiguration {
     this.maxBatchSize = Math.min(100, Math.max(1, options.maxBatchSize ?? 100));
     this.autoStart = options.autoStart ?? true;
     this.autoCollectBrowserIds = options.autoCollectBrowserIds ?? true;
+    this.enableRetryQueue = options.enableRetryQueue ?? false;
   }
 }
 
