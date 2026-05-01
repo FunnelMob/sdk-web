@@ -169,14 +169,16 @@ export class FunnelMob {
     this.fetchRemoteConfig();
 
     if (isFirstLaunch) {
+      // Order matches iOS/Android: Install first, then ActivateApp(first).
+      this.trackInstall();
       this.trackActivateApp(
         new FunnelMobEventParameters().set('is_first_session', true)
       );
-      // Set the marker AFTER the first-launch event is enqueued.
-      // Semantic B: if consent blocks dispatch, the event is dropped at the
-      // consent gate but the marker is still set, so ActivateApp(first) never
-      // fires again — matches the SDK's "consent denied = nothing tracked,
-      // ever" model.
+      // Set the marker AFTER the first-launch events are enqueued.
+      // Semantic B: if consent blocks dispatch, the events are dropped at
+      // the consent gate but the marker is still set, so Install /
+      // ActivateApp(first) never fire again — matches the SDK's "consent
+      // denied = nothing tracked, ever" model.
       this.saveFirstLaunchCompleted();
     } else {
       this.trackActivateApp();
@@ -444,6 +446,17 @@ export class FunnelMob {
   /** Meta only — user completes an in-app tutorial */
   trackCompleteTutorial(parameters?: FunnelMobEventParameters): void {
     this.trackStandard('CompleteTutorial', parameters);
+  }
+
+  /**
+   * First-launch install event. Maps to Meta's `Install` event in CAPI
+   * and TikTok's `InstallApp` in Events API. Fired automatically by
+   * `start()` on the very first cold start (before
+   * `trackActivateApp(is_first_session: true)`); the host should not
+   * normally call this directly.
+   */
+  trackInstall(parameters?: FunnelMobEventParameters): void {
+    this.trackStandard('Install', parameters);
   }
 
   /**
