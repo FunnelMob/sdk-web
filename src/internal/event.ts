@@ -8,6 +8,13 @@ export interface Event {
   revenue?: EventRevenue;
   parameters?: Record<string, string | number | boolean>;
   attributionId?: string;
+  /**
+   * How many times this event's batch has failed and been re-queued.
+   * Set to 0 on enqueue, incremented on every retryable failure. Once
+   * any event in a batch exceeds [`MAX_RETRY_ATTEMPTS`], the whole
+   * batch is dropped to keep a poison-pill from looping forever.
+   */
+  attemptCount?: number;
 }
 
 /**

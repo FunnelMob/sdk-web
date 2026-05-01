@@ -42,6 +42,16 @@ function makeConfig(overrides: { enableRetryQueue?: boolean } = {}) {
   });
 }
 
+/**
+ * Bypass the backoff window so a follow-up flush in the same test
+ * doesn't have to wait the real 2-60s. Reaches into the private field
+ * intentionally — production code never resets this.
+ */
+function clearBackoff(q: EventQueue): void {
+  // @ts-expect-error access private for test
+  q.nextFlushAllowedAt = 0;
+}
+
 describe('EventQueue flush retry semantics', () => {
   let queue: EventQueue;
   let client: NetworkClient;
@@ -157,6 +167,11 @@ describe('EventQueue flush retry semantics', () => {
     queue.enqueue(makeEvent('D'));
     queue.enqueue(makeEvent('E'));
 
+    // Skip past the backoff window before the next flush. The backoff
+    // is `2^attempt * 1000ms + jitter` and would otherwise gate the
+    // second flush.
+    clearBackoff(queue);
+
     // Capture what gets sent on the next flush
     let sentBatch: Event[] = [];
     vi.spyOn(client, 'sendEvents').mockImplementationOnce(
@@ -208,5 +223,134 @@ describe('EventQueue flush retry semantics', () => {
     expect(new NetworkError('', 'unknown').isRetryable).toBe(true);
     expect(new NetworkError('', 'unauthorized').isRetryable).toBe(false);
     expect(new NetworkError('', 'client_error').isRetryable).toBe(false);
+  });
+});
+
+describe('EventQueue resilience caps', () => {
+  let queue: EventQueue;
+  let client: NetworkClient;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorageMock.clear();
+    queue = new EventQueue();
+    client = new NetworkClient();
+  });
+
+  afterEach(() => {
+    localStorageMock.clear();
+  });
+
+  it('enqueue drops oldest events when MAX_QUEUE_SIZE is exceeded', () => {
+    // MAX_QUEUE_SIZE is 1000 in event-queue.ts. Push 1005 and verify
+    // the queue holds 1000 with the FIRST five evicted.
+    for (let i = 0; i < 1005; i += 1) {
+      queue.enqueue(makeEvent(`E${i}`));
+    }
+    expect(queue.count).toBe(1000);
+
+    // First remaining event should be E5 (E0..E4 evicted).
+    const batch = queue.dequeue(1);
+    expect(batch[0].eventName).toBe('E5');
+  });
+
+  it('drops the batch after MAX_RETRY_ATTEMPTS retryable failures', async () => {
+    queue.enqueue(makeEvent('A'));
+
+    // Each failed flush bumps attemptCount on the re-queued events. Five
+    // attempts is the cap; the sixth must drop.
+    for (let i = 0; i < 6; i += 1) {
+      vi.spyOn(client, 'sendEvents').mockRejectedValueOnce(
+        new NetworkError('Server error', 'server_error')
+      );
+      clearBackoff(queue);
+      await queue.flush(client, makeConfig(), 'device-1', null);
+    }
+
+    // After the 6th attempt the batch is dropped.
+    expect(queue.count).toBe(0);
+  });
+
+  it('successful flush resets attemptCount via clean dequeue', async () => {
+    queue.enqueue(makeEvent('A'));
+
+    // Two failures bump attemptCount to 2.
+    for (let i = 0; i < 2; i += 1) {
+      vi.spyOn(client, 'sendEvents').mockRejectedValueOnce(
+        new NetworkError('Server error', 'server_error')
+      );
+      clearBackoff(queue);
+      await queue.flush(client, makeConfig(), 'device-1', null);
+    }
+    expect(queue.count).toBe(1);
+
+    // Now succeed; queue empties cleanly.
+    vi.spyOn(client, 'sendEvents').mockResolvedValueOnce(undefined);
+    clearBackoff(queue);
+    await queue.flush(client, makeConfig(), 'device-1', null);
+    expect(queue.count).toBe(0);
+  });
+
+  it('flush is single-flighted: concurrent calls do not double-dequeue', async () => {
+    queue.enqueue(makeEvent('A'));
+    queue.enqueue(makeEvent('B'));
+
+    // Slow-resolving send; first flush is in flight, second must skip.
+    let resolveSend: (() => void) | null = null;
+    vi.spyOn(client, 'sendEvents').mockImplementation(
+      () => new Promise<void>((resolve) => { resolveSend = () => resolve(); })
+    );
+
+    const first = queue.flush(client, makeConfig(), 'device-1', null);
+    const second = queue.flush(client, makeConfig(), 'device-1', null);
+
+    // Both promises resolve, but the second is a no-op (returns immediately).
+    expect(resolveSend).not.toBeNull();
+    resolveSend!();
+    await Promise.all([first, second]);
+
+    // sendEvents was called exactly once even though we called flush twice.
+    expect((client.sendEvents as unknown as { mock: { calls: unknown[] } }).mock.calls.length).toBe(1);
+  });
+
+  it('after a retryable failure, flush() inside the backoff window is a no-op', async () => {
+    queue.enqueue(makeEvent('A'));
+
+    // First flush: retryable failure → backoff set
+    vi.spyOn(client, 'sendEvents').mockRejectedValueOnce(
+      new NetworkError('Server error', 'server_error')
+    );
+    await queue.flush(client, makeConfig(), 'device-1', null);
+    expect(queue.count).toBe(1);
+
+    // Immediate second flush: must skip without calling the network.
+    const sendSpy = vi.spyOn(client, 'sendEvents');
+    sendSpy.mockClear();
+    await queue.flush(client, makeConfig(), 'device-1', null);
+    expect(sendSpy).not.toHaveBeenCalled();
+    expect(queue.count).toBe(1);
+  });
+
+  it('successful flush clears the backoff', async () => {
+    queue.enqueue(makeEvent('A'));
+
+    // First: retryable failure → backoff active.
+    vi.spyOn(client, 'sendEvents').mockRejectedValueOnce(
+      new NetworkError('Server error', 'server_error')
+    );
+    await queue.flush(client, makeConfig(), 'device-1', null);
+
+    // Bypass backoff and succeed.
+    clearBackoff(queue);
+    queue.enqueue(makeEvent('B'));
+    vi.spyOn(client, 'sendEvents').mockResolvedValueOnce(undefined);
+    await queue.flush(client, makeConfig(), 'device-1', null);
+
+    // After success a fresh enqueue + flush should NOT be gated.
+    queue.enqueue(makeEvent('C'));
+    const sendSpy = vi.spyOn(client, 'sendEvents').mockResolvedValueOnce(undefined);
+    await queue.flush(client, makeConfig(), 'device-1', null);
+    expect(sendSpy).toHaveBeenCalled();
+    expect(queue.count).toBe(0);
   });
 });
