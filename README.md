@@ -140,7 +140,7 @@ FunnelMob.shared.trackDonate(10, 'USD');
 FunnelMob.shared.trackSpentCredits(100);
 ```
 
-See [docs/specs/sdk_events_reference.md](../docs/specs/sdk_events_reference.md) for the full list of 29 typed methods with platform support details.
+See [docs/reference/sdk_events_reference.md](../docs/reference/sdk_events_reference.md) for the full list of 29 typed methods with platform support details.
 
 ### Using Constants
 
