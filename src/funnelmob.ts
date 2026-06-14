@@ -688,7 +688,10 @@ export class FunnelMob {
       is_first_session: isFirstSession,
       context: {
         user_agent: context.userAgent,
-        language: context.language,
+        os_name: context.osName,
+        os_version: context.osVersion,
+        device_model: context.deviceModel,
+        locale: context.language,
         timezone: context.timezone,
         screen_width: context.screenWidth,
         screen_height: context.screenHeight,
@@ -1008,7 +1011,10 @@ export class FunnelMob {
         user_properties: this.userProperties ?? undefined,
         context: {
           user_agent: context.userAgent,
-          language: context.language,
+          os_name: context.osName,
+          os_version: context.osVersion,
+          device_model: context.deviceModel,
+          locale: context.language,
           timezone: context.timezone,
           screen_width: context.screenWidth,
           screen_height: context.screenHeight,

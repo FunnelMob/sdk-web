@@ -68,7 +68,10 @@ export interface AttributionResult {
  */
 export interface DeviceContext {
   user_agent?: string;
-  language?: string;
+  os_name?: string;
+  os_version?: string;
+  device_model?: string;
+  locale?: string;
   timezone?: string;
   screen_width?: number;
   screen_height?: number;
